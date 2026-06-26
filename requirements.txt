@@ -1,0 +1,29 @@
+# HTTP & Scraping
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+selenium>=4.18.0
+webdriver-manager>=4.0.0
+
+# WooCommerce
+woocommerce>=3.0.0
+
+# AI / OpenAI
+openai>=1.0.0
+
+# Data & Config
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+
+# Text processing
+python-slugify>=8.0.0
+thefuzz>=0.22.0
+python-Levenshtein>=0.25.0
+
+# Utilities
+tenacity>=8.2.0
+
+# Dev / Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+ruff>=0.1.0

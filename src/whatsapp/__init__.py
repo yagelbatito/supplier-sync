@@ -1,0 +1,1 @@
+"""WhatsApp → WooCommerce integration package."""

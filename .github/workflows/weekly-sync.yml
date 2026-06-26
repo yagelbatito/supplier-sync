@@ -1,0 +1,92 @@
+name: Weekly Supplier Sync
+
+on:
+  schedule:
+    # Every Sunday at 01:00 UTC (≈ 03:00–04:00 Israel time). Runs in GitHub's
+    # cloud — your computer does NOT need to be on.
+    - cron: "0 1 * * 0"
+
+  # Manual trigger from the GitHub Actions UI (Run workflow button)
+  workflow_dispatch:
+    inputs:
+      supplier:
+        description: "Specific supplier(s), comma-separated (empty = all enabled)"
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run without writing to WooCommerce (true/false)"
+        required: false
+        default: "false"
+
+# Don't let two syncs overlap
+concurrency:
+  group: supplier-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Run Supplier Sync (verify + fix)
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # under GitHub's 6h job limit; first full run can be long
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run sync (run_and_verify.py)
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: "gpt-4o-mini"
+          PALDINOX_USER: ${{ secrets.PALDINOX_USER }}
+          PALDINOX_PASSWORD: ${{ secrets.PALDINOX_PASSWORD }}
+          PALDINOX_DOC_NUM: ${{ secrets.PALDINOX_DOC_NUM }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          VERIFY_SSL: "false"
+          REQUEST_DELAY: "1.0"
+          LOG_LEVEL: "INFO"
+        run: |
+          SUP="${{ github.event.inputs.supplier }}"
+          if [ -n "$SUP" ]; then
+            echo "Running verify-sync for supplier(s): $SUP"
+            python -u run_and_verify.py --supplier "$SUP"
+          else
+            echo "Running verify-sync for all enabled suppliers"
+            python -u run_and_verify.py
+          fi
+
+      - name: Upload sync report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-report-${{ github.run_id }}
+          path: data/reports/
+          retention-days: 30
+
+      - name: Upload sync logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-logs-${{ github.run_id }}
+          path: data/logs/
+          retention-days: 14
