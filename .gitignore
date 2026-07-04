@@ -41,6 +41,14 @@ data/cache/*
 !data/reports/.gitkeep
 !data/cache/.gitkeep
 
+# Binaries / tunnels (do not commit the 54MB cloudflared)
+cloudflared.exe
+*.exe
+
+# WhatsApp runtime state
+data/pending_whatsapp.json
+config.yml
+
 # OS
 .DS_Store
 Thumbs.db
