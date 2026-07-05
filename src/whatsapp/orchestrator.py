@@ -119,11 +119,25 @@ class WhatsAppOrchestrator:
         ocr_result = self.ocr.extract(image_bytes, mime_type=mime)
 
         if not ocr_result.is_usable() and not cmd.has_manual_product_details():
+            # Plain product photo with no readable text — that's fine (most
+            # furniture photos have no text). Save it as a pending item and ask
+            # the user to type the details. Their follow-up message (even as a
+            # NEW message, not a formal reply) matches this via the
+            # latest-pending fallback in handle_incoming_text.
+            self.store.save(message_id, {
+                "from": from_number,
+                "image_local_path": local_path,
+                "image_mime": mime,
+                "ocr": ocr_result.raw_json,
+                "received_at": datetime.now(timezone.utc).isoformat(),
+                "status": "awaiting_price",
+            })
             self.wa.send_text(
                 from_number,
-                "⚠️ לא הצלחתי לזהות פרטי מוצר בתמונה.\n"
-                "שלח שוב, או הוסף ידנית בתגובה:\n"
-                "שם:<שם המוצר> מידות:<מידות> מחיר:<מחיר> קטגוריה:<קטגוריה>",
+                "📷 קיבלתי את התמונה!\n"
+                "עכשיו שלח את הפרטים (אפשר בהודעה נפרדת):\n"
+                "שם:<שם המוצר>  מחיר:<מחיר>  קטגוריה:<קטגוריה>\n\n"
+                "לדוגמה: שם:שולחן אלון נפתח  מחיר:4900  קטגוריה:פינות אוכל מעץ",
                 reply_to_msg_id=message_id,
             )
             return
@@ -274,18 +288,31 @@ class WhatsAppOrchestrator:
         product = self._build_product(ocr, cmd, config, pending_msg_id)
 
         # 3. ── Category matching ──────────────────────────────
-        # Mirrors main.py:_process_product step "Category matching"
-        try:
-            product.mapped_category = self.category_matcher.match(
-                supplier_key=config.key,
-                supplier_category=product.supplier_category,
-                product_name=product.name,
-                product_description=product.original_description,
-                default_category=config.default_category,
-            )
-        except Exception as exc:
-            logger.error(f"Category matching failed: {exc}", exc_info=True)
-            product.mapped_category = config.default_category
+        # If the user explicitly typed a category, honour it — mapped to the
+        # closest REAL WC category — instead of letting the keyword matcher
+        # override it from the product name (which could point at a category
+        # that doesn't exist on the site, dumping the product to manual review).
+        user_cat = self._resolve_user_category(cmd.category_override)
+        if user_cat:
+            product.mapped_category = user_cat
+            logger.info(f"[WA] Using user category '{cmd.category_override}' → '{user_cat}'")
+        else:
+            try:
+                matched = self.category_matcher.match(
+                    supplier_key=config.key,
+                    supplier_category=product.supplier_category,
+                    product_name=product.name,
+                    product_description=product.original_description,
+                    default_category=config.default_category,
+                )
+                # Never publish into a category that doesn't exist on the site —
+                # snap it to the closest real one so we avoid "בדיקה ידנית".
+                product.mapped_category = self._closest_real_category(
+                    matched, default=config.default_category,
+                )
+            except Exception as exc:
+                logger.error(f"Category matching failed: {exc}", exc_info=True)
+                product.mapped_category = config.default_category
 
         # 4. ── Handle OOS (not really applicable to WhatsApp items, but
         #       preserves the existing field invariants) ─────────────────
@@ -327,6 +354,8 @@ class WhatsAppOrchestrator:
             existing = self.product_svc.find_by_sku(product.sku)
             if existing:
                 wc_id = existing["id"]
+                if not images_payload:
+                    images_payload = self._existing_images_payload(existing)
                 self.product_svc.update(
                     wc_id, product, category_ids, images_payload,
                     shipping_class=shipping_class,
@@ -381,6 +410,35 @@ class WhatsAppOrchestrator:
             if k.lower() == lower:
                 return cfg
         return None
+
+    def _closest_real_category(self, name: Optional[str], default: str = "") -> str:
+        """Snap a proposed category name to the closest REAL WC category.
+
+        Returns the name unchanged if it already exists on the site; otherwise
+        the closest existing category (fuzzy) so we never publish into a
+        non-existent category. Falls back to `default` if nothing is close.
+        """
+        if not name:
+            return default
+        name = name.strip()
+        reals = self.category_svc.category_names
+        if not reals or name in reals:
+            return name
+        from thefuzz import process as _fuzz
+        result = _fuzz.extractOne(name, reals)
+        if result and result[1] >= 75:
+            logger.info(f"[WA] Category '{name}' not on site → closest '{result[0]}' (score={result[1]})")
+            return result[0]
+        return default
+
+    def _resolve_user_category(self, name: Optional[str]) -> Optional[str]:
+        """If the user typed a category, return the matching REAL WC category
+        (exact or close fuzzy). Returns None when nothing is close enough, so
+        the caller falls back to the keyword matcher."""
+        if not name or not name.strip():
+            return None
+        resolved = self._closest_real_category(name, default="")
+        return resolved or None
 
     def _build_product(
         self,
@@ -497,3 +555,13 @@ class WhatsAppOrchestrator:
         except Exception as exc:
             logger.error(f"WC media upload failed: {exc}")
             return None
+
+    @staticmethod
+    def _existing_images_payload(existing: dict) -> list[dict]:
+        """Keep current WC product images when a replacement image is unavailable."""
+        payload: list[dict] = []
+        for image in existing.get("images", []) or []:
+            image_id = image.get("id")
+            if image_id:
+                payload.append({"id": image_id})
+        return payload

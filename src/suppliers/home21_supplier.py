@@ -100,8 +100,13 @@ class Home21Supplier(BaseSupplier):
                     colors.append(clean)
 
         slug = url.rstrip("/").split("/")[-1]
-        stock_text = soup.get_text().lower()
-        stock = "outofstock" if "אזל" in stock_text else "instock"
+        # home21 renders a hidden <div class="outOfStock hide">אזל מהמלאי</div>
+        # on EVERY product page — the "hide" class is dropped only when the
+        # item is truly sold out. Scanning page text for "אזל" therefore marked
+        # every product out of stock. Check whether that div is actually shown.
+        oos_div = soup.find("div", class_="outOfStock")
+        is_oos = bool(oos_div) and "hide" not in (oos_div.get("class") or [])
+        stock = "outofstock" if is_oos else "instock"
 
         p = self._make_product(
             name=name,
