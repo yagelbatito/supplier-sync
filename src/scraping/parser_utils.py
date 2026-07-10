@@ -119,3 +119,27 @@ def extract_attribute(soup: BeautifulSoup, labels: list[str]) -> str:
                 if val:
                     return val
     return ""
+
+
+def parse_dimensions(text: str) -> tuple[str, str, str]:
+    """Extract (width, depth, height) in cm from free text.
+
+    Handles the Leopard-style single line
+    ``מידות המוצר : רוחב 48 | עומק 58 | גובה 91 ס"מ`` (labels + numbers on one
+    line, any order), as well as W/D/H aliases. Returns ('', '', '') for any
+    dimension not found. Only grabs a number that appears close AFTER the label
+    so it never swallows unrelated digits (prices, JS, etc.)."""
+    if not text:
+        return "", "", ""
+
+    def grab(*labels: str) -> str:
+        for lab in labels:
+            m = re.search(lab + r"[^\d]{0,6}(\d{1,4}(?:\.\d+)?)", text)
+            if m:
+                return m.group(1)
+        return ""
+
+    width = grab("רוחב", "רו­חב", r"\bW\b", "width")
+    depth = grab("עומק", r"\bD\b", "depth")
+    height = grab("גובה", "אורך", r"\bH\b", "height")
+    return width, depth, height

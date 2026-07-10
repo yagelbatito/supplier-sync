@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 from src.core.config_loader import SupplierConfig
 from src.models.product import SupplierProduct
 from src.scraping.http_client import HttpClient
-from src.scraping.parser_utils import extract_attribute, find_images, find_price
+from src.scraping.parser_utils import extract_attribute, find_images, find_price, parse_dimensions
 from src.suppliers.base_supplier import BaseSupplier
 
 # Categories to scrape — extend this list freely
@@ -146,9 +146,10 @@ class LeopardSupplier(BaseSupplier):
         # Attributes
         material = extract_attribute(soup, ["חומר", "material", "Material"])
         color = extract_attribute(soup, ["צבע", "color", "Color"])
-        width = extract_attribute(soup, ["רוחב", "W", "width"])
-        depth = extract_attribute(soup, ["עומק", "D", "depth"])
-        height = extract_attribute(soup, ["גובה", "H", "height"])
+        # Leopard lists dimensions on a single line ("רוחב 48 | עומק 58 | גובה 91
+        # ס\"מ") inside the description, so the generic label→next-cell
+        # extract_attribute mis-grabs a <script> tag. Parse the numbers directly.
+        width, depth, height = parse_dimensions(desc)
 
         # Images
         images = find_images(soup, BASE)

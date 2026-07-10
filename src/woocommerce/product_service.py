@@ -169,6 +169,19 @@ class ProductService:
             "meta_data": self._build_meta(product),
         }
 
+        # Native WooCommerce dimensions (cm). depth → length (WC has no
+        # "depth"). Only sent when we actually parsed a value, so an update
+        # never wipes existing dimensions with blanks.
+        dims = {}
+        if getattr(product, "depth", ""):
+            dims["length"] = str(product.depth)
+        if getattr(product, "width", ""):
+            dims["width"] = str(product.width)
+        if getattr(product, "height", ""):
+            dims["height"] = str(product.height)
+        if dims:
+            payload["dimensions"] = dims
+
         # Only set shipping_class if we have one — empty string would clear
         # an existing class on the product during an update.
         if shipping_class:
