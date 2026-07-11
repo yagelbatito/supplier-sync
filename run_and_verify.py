@@ -339,16 +339,17 @@ def process_product(
             logger.warning(
                 f"  ⚠️  attempt {attempt}/{MAX_ATTEMPTS} [{product.sku}] bad upload: "
                 f"{', '.join(problems)}")
-            # verify says no image → try re-host via WP media, else keep as
-            # a draft flagged for manual image add (don't loop pointlessly).
-            if problems == ["no image"] and product.images and config.sync_images:
-                if rehosted_ids is None:
+            # verify says no image → try re-host via WP media, else DRAFT it.
+            # We draft even when the scraper found no image URLs at all
+            # (product.images empty) — a public product must never be imageless.
+            if "no image" in problems and config.sync_images:
+                if product.images and rehosted_ids is None:
                     ids = media_svc.upload_product_images(product.images)
                     if ids:
                         rehosted_ids = ids
                         logger.info(f"  🖼️  re-hosted {len(ids)} images → retrying [{product.sku}]")
                         continue
-                # rehost unavailable → accept as draft-needs-image
+                # no image obtainable (empty source or rehost failed) → draft
                 if wc_id_existing:
                     product_svc._client.put(f"products/{wc_id_existing}", {"status": "draft"})
                     logger.warning(f"  🖼️→∅ no image obtainable → draft for manual image [{product.sku}]")

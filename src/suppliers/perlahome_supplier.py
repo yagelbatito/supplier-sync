@@ -167,6 +167,23 @@ class PerlahomeSupplier(BaseSupplier):
                 full_src = re.sub(r"/system/photos/(\d+)/show/", r"/system/photos/\1/original/", src)
                 images.append(full_src)
 
+        # Fallback: the listing thumbnail is sometimes lazy-loaded with no
+        # src/data-src, so we'd end up with no image and publish the product
+        # bare. Pull the real photo (cloudfront system/photos/.../original/)
+        # from the product page instead. Store logos are skipped.
+        if not images and prod_link:
+            try:
+                dsoup = self._get_soup(prod_link)
+                for i in dsoup.find_all("img"):
+                    s = i.get("src") or i.get("data-src") or ""
+                    if "system/photos/" in s and "/logos/" not in s:
+                        full = re.sub(r"/system/photos/(\d+)/(show|thumb|small)/", r"/system/photos/\1/original/", s)
+                        if full not in images:
+                            images.append(full)
+                images = images[:4]
+            except Exception:
+                pass
+
         # Price — text like "1,978 ₪"
         price = 0.0
         price_el = div.select_one("p.price")
