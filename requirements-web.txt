@@ -1,0 +1,19 @@
+# Lean dependency set for the WhatsApp webhook web service (Render/Railway).
+# Excludes the scraper-only heavy deps (selenium, webdriver-manager) and dev
+# tooling so the cloud build stays small and fast.
+fastapi>=0.110.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+
+woocommerce>=3.0.0
+openai>=1.0.0
+
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+python-slugify>=8.0.0
+thefuzz>=0.22.0
+tenacity>=8.2.0

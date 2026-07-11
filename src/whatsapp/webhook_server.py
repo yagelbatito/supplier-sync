@@ -62,6 +62,11 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
     app = FastAPI(title="WhatsApp → WooCommerce sync")
     allowed = _allowed_numbers()
 
+    @app.get("/")
+    def health():
+        """Health check for cloud hosts (Render/Railway) — always 200."""
+        return {"status": "ok", "service": "whatsapp-woocommerce"}
+
     @app.get("/webhook/whatsapp", response_class=PlainTextResponse)
     def verify(
         hub_mode: str = Query("", alias="hub.mode"),

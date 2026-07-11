@@ -137,7 +137,8 @@ def main() -> int:
     app = create_app(orchestrator)
 
     host = os.getenv("WHATSAPP_WEBHOOK_HOST", "0.0.0.0")
-    port = int(os.getenv("WHATSAPP_WEBHOOK_PORT", "8000"))
+    # Cloud hosts (Render/Railway/Heroku) inject the port to bind via $PORT.
+    port = int(os.getenv("PORT") or os.getenv("WHATSAPP_WEBHOOK_PORT", "8000"))
     logger.info(f"Starting WhatsApp webhook server on {host}:{port}")
 
     uvicorn.run(app, host=host, port=port, log_level="info")

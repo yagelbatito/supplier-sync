@@ -1,0 +1,40 @@
+# Render Blueprint for the WhatsApp → WooCommerce upload bot.
+# In Render: New + → Blueprint → connect this repo → it reads this file.
+# Set the secret env vars (marked sync:false) in the Render dashboard.
+services:
+  - type: web
+    name: smadar-whatsapp
+    runtime: python
+    plan: free
+    region: frankfurt
+    branch: main
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: python whatsapp_listener.py
+    healthCheckPath: /
+    envVars:
+      - key: WHATSAPP_TOKEN            # permanent System User token
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_ALLOWED_NUMBERS  # comma-separated, e.g. 972505766659,9725...
+        sync: false
+      - key: WHATSAPP_API_VERSION
+        value: v21.0
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini
+      - key: WOOCOMMERCE_URL
+        sync: false
+      - key: WOOCOMMERCE_KEY
+        sync: false
+      - key: WOOCOMMERCE_SECRET
+        sync: false
+      - key: WP_USER
+        sync: false
+      - key: WP_APP_PASSWORD
+        sync: false
+      - key: VERIFY_SSL
+        value: "false"
