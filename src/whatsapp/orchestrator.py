@@ -20,6 +20,7 @@ from src.core.constants import STATUS_DRAFT, STOCK_IN, STOCK_OUT
 from src.core.logger import get_logger
 from src.core.utils import stable_sku
 from src.enrichment.product_content_generator import ProductContentGenerator
+from src.enrichment.prompts import FOOTER_NOTE
 from src.matching.category_matcher import CategoryMatcher
 from src.models.product import SupplierProduct
 from src.whatsapp.message_parser import ParsedCommand, parse_command
@@ -439,6 +440,22 @@ class WhatsAppOrchestrator:
                 return
         else:
             logger.warning("[WA] ProductContentGenerator unavailable — skipping enrichment")
+
+        # 5b. ── Guarantee the EXACT, full dimensions in the description ──
+        # The AI paraphrases the prose and sometimes drops a dimension
+        # (e.g. length/אורך). Append the user's dimensions verbatim as an
+        # explicit spec line (inserted before the contact footer), so the
+        # full measurements are always present and correct.
+        dims_text = (getattr(ocr, "dimensions_text", "") or "").strip()
+        if dims_text:
+            spec_line = f"📐 מידות: {dims_text}"
+            fd = product.full_description or ""
+            if dims_text not in fd:
+                if FOOTER_NOTE and FOOTER_NOTE in fd:
+                    fd = fd.replace(FOOTER_NOTE, spec_line + "\n\n" + FOOTER_NOTE, 1)
+                else:
+                    fd = (fd.rstrip() + "\n\n" + spec_line) if fd else spec_line
+                product.full_description = fd
 
         # 6. ── Upload image (WhatsApp image is local bytes, NOT a URL) ──
         # Same pattern main.py uses for paldinox: pre-upload via wc_client
