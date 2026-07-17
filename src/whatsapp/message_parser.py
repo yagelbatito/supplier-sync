@@ -45,19 +45,14 @@ _KEY_ALIASES = {
     # category
     "קטגוריה": "category",
     "category": "category",
-    # dimensions
+    # dimensions — everything after "מידות:" is kept as ONE verbatim string.
+    # We deliberately do NOT register רוחב/עומק/גובה/אורך as separate keys:
+    # they would fragment the value and collide (אורך and עומק both → depth),
+    # dropping measurements. The user writes them freely under "מידות:".
     "מידות": "dimensions",
     "מידה": "dimensions",
     "dimensions": "dimensions",
     "size": "dimensions",
-    "רוחב": "width",
-    "width": "width",
-    "גובה": "height",
-    "height": "height",
-    "עומק": "depth",
-    "depth": "depth",
-    "אורך": "depth",
-    "length": "depth",
     # special commands
     "ביטול": "cancel",
     "מחק": "cancel",

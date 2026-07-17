@@ -98,7 +98,7 @@
   "home21": {
     "supplier_name": "Home 21",
     "base_url": "https://home21.co.il",
-    "enabled": true,
+    "enabled": false,
     "price_multiplier": 0.90,
     "round_prices": true,
     "round_to": "X.00",
