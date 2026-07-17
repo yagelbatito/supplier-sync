@@ -236,8 +236,10 @@ class JulianSupplier(BaseSupplier):
             balance = float(col("Balance") or 0)
         except (TypeError, ValueError):
             balance = 0
-        can_buy = str(col("CanBePurchased", "0")) in ("1", "Yes", "yes")
-        stock_status = "instock" if (balance > 0 and can_buy) else "outofstock"
+        # Stock is driven by Balance alone. CanBePurchased is '0' even for items
+        # with hundreds in stock (it flags something else, not availability), so
+        # AND-ing it wrongly marked every product out of stock.
+        stock_status = "instock" if balance > 0 else "outofstock"
 
         # Images live on the WordPress media library at
         # `wp-content/uploads/wizshop/{Key}.jpg`. The WizShop API's
