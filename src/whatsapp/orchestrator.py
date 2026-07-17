@@ -212,11 +212,9 @@ class WhatsAppOrchestrator:
                 logger.info(f"[WA] No reply context — using latest pending {target_msg_id}")
 
         if not record:
-            self.wa.send_text(
-                from_number,
-                "🤔 אין מוצר ממתין למחיר. שלח תחילה תמונה של המוצר.",
-                reply_to_msg_id=message_id,
-            )
+            # No image is waiting for a price → treat the text as a management
+            # command (mark out of stock / delete) or a product-lookup query.
+            self._handle_command_or_query(from_number, body, message_id)
             return
 
         # Cancel command
@@ -253,6 +251,110 @@ class WhatsAppOrchestrator:
             record.get("image_mime", "image/jpeg"),
             reply_to_msg_id=message_id,
         )
+
+    # ── Text commands & product lookup (no image pending) ────────
+
+    def _search_products(self, query: str, limit: int = 5) -> list[dict]:
+        if not query:
+            return []
+        try:
+            return self.wc_client.get(
+                "products", params={"search": query, "per_page": limit, "status": "any"}
+            ) or []
+        except Exception as exc:
+            logger.error(f"[WA] product search failed: {exc}")
+            return []
+
+    def _handle_command_or_query(self, from_number: str, body: str, message_id: str) -> None:
+        text = (body or "").strip()
+        if not text:
+            self.wa.send_text(
+                from_number,
+                "שלח *תמונה* של מוצר כדי להעלות, או *שם מוצר* כדי לבדוק מחיר.\n"
+                "פקודות: `אזל <שם>` · `מחק <שם>`",
+                reply_to_msg_id=message_id,
+            )
+            return
+        # management: mark out of stock + draft
+        for kw in ("אזל", "נגמר", "מכר", "מכרתי", "אין במלאי", "נמכר"):
+            if text.startswith(kw):
+                self._cmd_out_of_stock(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        # management: delete (to trash — reversible)
+        for kw in ("מחק", "תמחק", "הסר"):
+            if text.startswith(kw):
+                self._cmd_delete(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        # otherwise: product lookup query — strip a leading question word
+        q = text
+        for kw in ("כמה עולה", "מה המחיר של", "מה המחיר", "חפש", "מחיר", "בדוק"):
+            if q.startswith(kw):
+                q = q[len(kw):]
+                break
+        q = q.strip(" :?,-–\t").rstrip("?").strip()
+        self._query_products(from_number, q, message_id)
+
+    def _query_products(self, from_number: str, query: str, message_id: str) -> None:
+        results = self._search_products(query, limit=3)
+        if not results:
+            self.wa.send_text(from_number, f'🔍 לא נמצא מוצר בשם "{query}".', reply_to_msg_id=message_id)
+            return
+        self.wa.send_text(from_number, f'🔍 נמצאו {len(results)} תוצאות עבור "{query}":', reply_to_msg_id=message_id)
+        for p in results:
+            price = p.get("price") or p.get("regular_price") or "?"
+            stock = "✅ במלאי" if p.get("stock_status") == "instock" else "❌ אזל מהמלאי"
+            caption = f"🪑 {p.get('name','')}\n💰 {price} ₪  |  {stock}"
+            if p.get("status") != "publish":
+                caption += f"\n⚠️ סטטוס: {p.get('status')}"
+            if p.get("permalink"):
+                caption += f"\n🔗 {p['permalink']}"
+            imgs = p.get("images") or []
+            if imgs and imgs[0].get("src"):
+                self.wa.send_image(from_number, imgs[0]["src"], caption)
+            else:
+                self.wa.send_text(from_number, caption)
+
+    def _resolve_one(self, from_number: str, query: str, message_id: str, verb: str) -> Optional[dict]:
+        """Pick a single product to act on, or message the user and return None."""
+        if not query:
+            self.wa.send_text(from_number, f"כתוב את שם המוצר {verb}. למשל: `אזל שולחן לורי`", reply_to_msg_id=message_id)
+            return None
+        results = self._search_products(query, limit=6)
+        if not results:
+            self.wa.send_text(from_number, f'🔍 לא נמצא מוצר בשם "{query}".', reply_to_msg_id=message_id)
+            return None
+        # exact (case-insensitive) name match wins even if there are several hits
+        exact = [p for p in results if p.get("name", "").strip() == query.strip()]
+        if len(results) == 1:
+            return results[0]
+        if len(exact) == 1:
+            return exact[0]
+        lines = [f'נמצאו {len(results)} מוצרים ל"{query}". כתוב שם מדויק יותר כדי {verb}:']
+        lines += [f"• {p.get('name','')} ({p.get('price','?')} ₪)" for p in results[:6]]
+        self.wa.send_text(from_number, "\n".join(lines), reply_to_msg_id=message_id)
+        return None
+
+    def _cmd_out_of_stock(self, from_number: str, query: str, message_id: str) -> None:
+        p = self._resolve_one(from_number, query, message_id, "לסמן כאזל")
+        if not p:
+            return
+        try:
+            self.wc_client.put(f"products/{p['id']}", {"stock_status": "outofstock", "status": "draft"})
+            self.wa.send_text(from_number, f'📦 "{p.get("name","")}" סומן כ*אזל מהמלאי* והורד לטיוטה.', reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] out-of-stock failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ נכשל עדכון המוצר. נסה שוב.", reply_to_msg_id=message_id)
+
+    def _cmd_delete(self, from_number: str, query: str, message_id: str) -> None:
+        p = self._resolve_one(from_number, query, message_id, "למחוק")
+        if not p:
+            return
+        try:
+            self.wc_client.delete(f"products/{p['id']}", params={"force": "false"})
+            self.wa.send_text(from_number, f'🗑️ "{p.get("name","")}" הועבר לפח (ניתן לשחזור באתר).', reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] delete failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ נכשלה המחיקה. נסה שוב.", reply_to_msg_id=message_id)
 
     # ── Core sync logic ──────────────────────────────────────────
 

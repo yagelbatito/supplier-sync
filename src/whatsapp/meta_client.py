@@ -75,6 +75,28 @@ class WhatsAppClient:
             logger.error(f"send_text failed (to={to}): {exc}")
         return None
 
+    def send_image(self, to: str, image_url: str, caption: str = "") -> Optional[str]:
+        """Send an image by public URL with an optional caption."""
+        url = f"{self._base}/{self.phone_number_id}/messages"
+        payload: dict = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "image",
+            "image": {"link": image_url, "caption": caption[:1024]},
+        }
+        try:
+            resp = self._client.post(url, json=payload)
+            resp.raise_for_status()
+            messages = resp.json().get("messages", [])
+            if messages:
+                return messages[0].get("id")
+        except Exception as exc:
+            logger.error(f"send_image failed (to={to}): {exc}")
+            # fall back to a text message so the user still gets the info
+            return self.send_text(to, caption)
+        return None
+
     # ── Media download ───────────────────────────────────────────
 
     def get_media_url(self, media_id: str) -> Optional[str]:

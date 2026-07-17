@@ -74,6 +74,15 @@ class WooCommerceClient:
         self._check(resp, "PUT", url)
         return resp.json()
 
+    def delete(self, endpoint, params=None):
+        if self.dry_run:
+            logger.info(f"[DRY-RUN] DELETE {endpoint}")
+            return {"id": 0}
+        url = f"{self.api_base}/{endpoint.lstrip('/')}"
+        resp = self._session.delete(url, params=self._p(params), verify=self._verify, timeout=60)
+        self._check(resp, "DELETE", url)
+        return resp.json()
+
     def wp_auth_headers(self):
         if not self._wp_user or not self._wp_password:
             return {}
