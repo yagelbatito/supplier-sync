@@ -9,6 +9,7 @@ Two public entry points called by the webhook server:
     handle_incoming_image(...)  — image message arrived
     handle_incoming_text(...)   — text message arrived (possibly a reply with price)
 """
+import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -449,10 +450,17 @@ class WhatsAppOrchestrator:
     ) -> SupplierProduct:
         """Build a SupplierProduct from OCR + user input, ready for the pipeline."""
         # SKU: prefer user override → OCR'd SKU → stable hash of message_id.
-        # Using pending_msg_id as the stable key means resending the same image
-        # WON'T create a duplicate; sending a new image of the same product
-        # WILL get a new SKU (and find_by_sku won't match — caught at create).
-        sku_input = cmd.sku_override or ocr.sku or f"wa-{pending_msg_id}"
+        # NOTE: we must HASH the wamid, not use it raw. Every wamid from the
+        # same sender starts with the same ~34 chars (they encode the phone
+        # number), and stable_sku truncates the id to 30 — so raw wamids
+        # collapsed to ONE SKU and each new product overwrote the previous one.
+        # A short sha1 of the full wamid keeps every product unique.
+        if cmd.sku_override:
+            sku_input = cmd.sku_override
+        elif ocr.sku:
+            sku_input = ocr.sku
+        else:
+            sku_input = "wa-" + hashlib.sha1(pending_msg_id.encode("utf-8")).hexdigest()[:12]
         sku = stable_sku(
             supplier_key=cfg.key,
             product_id=sku_input,
