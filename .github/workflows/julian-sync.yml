@@ -1,0 +1,60 @@
+name: Julian Weekly Sync
+
+# Julian is NOT part of weekly-sync.yml (that would import ALL 71 categories
+# without the whitelist/mapping/name-dedupe). This dedicated job runs
+# julian_import.py, which imports only the whitelisted categories, maps them to
+# existing WC categories, and skips duplicate names. Re-runs update stock.
+on:
+  schedule:
+    - cron: "0 3 * * 0"   # Sunday 03:00 UTC (~06:00 IL), after the main sync
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max products per category (empty = all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: julian-sync
+  cancel-in-progress: false
+
+jobs:
+  julian:
+    name: Import Julian (whitelist + map + name-dedupe)
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Julian import
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: "gpt-4o-mini"
+          VERIFY_SSL: "false"
+          REQUEST_DELAY: "0.5"
+          LOG_LEVEL: "INFO"
+        run: |
+          LIM="${{ github.event.inputs.limit }}"
+          if [ -n "$LIM" ]; then
+            python -u julian_import.py --limit "$LIM" --apply
+          else
+            python -u julian_import.py --apply
+          fi
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: julian-sync-logs-${{ github.run_id }}
+          path: data/logs/
+          retention-days: 14
