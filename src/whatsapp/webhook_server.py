@@ -67,6 +67,13 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
         """Health check for cloud hosts (Render/Railway) — always 200."""
         return {"status": "ok", "service": "whatsapp-woocommerce"}
 
+    # Live category-management tool (served from this same app; it has WC creds).
+    try:
+        from src.whatsapp.category_tool import register_category_tool
+        register_category_tool(app, orchestrator)
+    except Exception as exc:
+        logger.warning(f"category tool not mounted: {exc}")
+
     @app.get("/webhook/whatsapp", response_class=PlainTextResponse)
     def verify(
         hub_mode: str = Query("", alias="hub.mode"),
