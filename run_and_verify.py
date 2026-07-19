@@ -176,8 +176,11 @@ def update_existing_product(product, existing, config, product_svc, stats,
         product_svc.update_price_only(wc_id, product)
         changes.append(f"price {wc_price}→{product.calculated_price}")
     if not changes:
-        product_svc.update_stock_only(wc_id, product.stock_status)
-        changes.append("no change (sync touch)")
+        # No stock/price change → SKIP the WC write. A per-product "sync touch"
+        # write for every unchanged item (~5000 writes/run) is what pushed the
+        # weekly sync past its 5h50m timeout before it finished all suppliers.
+        # Reads still happen (scrape + in-memory SKU cache), just no pointless PUT.
+        changes.append("no change")
     return ("ok_updated", {"wc_id": wc_id, "sku": product.sku,
                             "name": product.name[:60], "changes": changes})
 
