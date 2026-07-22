@@ -11,6 +11,7 @@ Two public entry points called by the webhook server:
 """
 import hashlib
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -272,7 +273,11 @@ class WhatsAppOrchestrator:
             self.wa.send_text(
                 from_number,
                 "שלח *תמונה* של מוצר כדי להעלות, או *שם מוצר* כדי לבדוק מחיר.\n"
-                "פקודות: `אזל <שם>` · `מחק <שם>`",
+                "פקודות:\n"
+                "• `אזל <שם>` — סימון אזל מהמלאי\n"
+                "• `מחק <שם>` — מחיקה\n"
+                "• `מחיר <שם> <מחיר>` — עדכון מחיר\n"
+                "• `משלוח <שם> קטן/בינוני/גדול` — עדכון משלוח",
                 reply_to_msg_id=message_id,
             )
             return
@@ -286,6 +291,16 @@ class WhatsAppOrchestrator:
             if text.startswith(kw):
                 self._cmd_delete(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
+        # management: shipping class — "משלוח <שם> קטן/בינוני/גדול"
+        for kw in ("עדכן משלוח", "שנה משלוח", "משלוח"):
+            if text.startswith(kw):
+                self._cmd_shipping(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        # management: set price — "עדכן מחיר <שם> <מחיר>" / "מחיר <שם> <מספר>"
+        m = re.match(r"^(?:עדכן\s+מחיר|שנה\s+מחיר|מחיר)\s+(.+?)\s+([\d,]+(?:\.\d+)?)\s*₪?$", text)
+        if m:
+            self._cmd_set_price(from_number, m.group(1).strip(), m.group(2), message_id)
+            return
         # otherwise: product lookup query — strip a leading question word
         q = text
         for kw in ("כמה עולה", "מה המחיר של", "מה המחיר", "חפש", "מחיר", "בדוק"):
@@ -356,6 +371,45 @@ class WhatsAppOrchestrator:
         except Exception as exc:
             logger.error(f"[WA] delete failed: {exc}")
             self.wa.send_text(from_number, "⚠️ נכשלה המחיקה. נסה שוב.", reply_to_msg_id=message_id)
+
+    def _cmd_set_price(self, from_number: str, name: str, price_str: str, message_id: str) -> None:
+        try:
+            price = float(price_str.replace(",", ""))
+        except ValueError:
+            self.wa.send_text(from_number, "מחיר לא תקין.", reply_to_msg_id=message_id)
+            return
+        p = self._resolve_one(from_number, name, message_id, "לעדכן מחיר")
+        if not p:
+            return
+        val = str(int(price)) if price == int(price) else str(price)
+        try:
+            self.wc_client.put(f"products/{p['id']}", {"regular_price": val})
+            self.wa.send_text(from_number, f'💰 "{p.get("name","")}" → {val} ₪ ✅', reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] price update failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון המחיר נכשל. נסה שוב.", reply_to_msg_id=message_id)
+
+    _SHIP = {"קטן": "משלוח-קטן", "בינוני": "משלוח-בינוני", "גדול": "משלוח-גדול"}
+
+    def _cmd_shipping(self, from_number: str, args: str, message_id: str) -> None:
+        parts = args.rsplit(None, 1)  # split off the last word as the size
+        size = parts[-1] if parts else ""
+        if len(parts) < 2 or size not in self._SHIP:
+            self.wa.send_text(
+                from_number,
+                "שימוש: `משלוח <שם מוצר> קטן/בינוני/גדול`\nלמשל: `משלוח שולחן לורי גדול`",
+                reply_to_msg_id=message_id)
+            return
+        name, slug = parts[0].strip(), self._SHIP[size]
+        p = self._resolve_one(from_number, name, message_id, "לעדכן משלוח")
+        if not p:
+            return
+        try:
+            self.wc_client.put(f"products/{p['id']}", {"shipping_class": slug})
+            self.wa.send_text(from_number, f'🚚 "{p.get("name","")}" → משלוח {size} ✅', reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] shipping update failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון המשלוח נכשל. נסה שוב.", reply_to_msg_id=message_id)
 
     # ── Core sync logic ──────────────────────────────────────────
 
