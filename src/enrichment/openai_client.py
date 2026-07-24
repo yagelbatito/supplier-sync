@@ -78,3 +78,41 @@ class OpenAIClient:
         except Exception as exc:
             logger.error(f"OpenAI error: {exc}")
             return ""
+
+    def chat_messages(
+        self,
+        messages: list,
+        max_tokens: int = 700,
+        temperature: float = 0.6,
+        json_mode: bool = False,
+    ) -> str:
+        """Multi-turn chat: accepts a full messages list (system + history).
+
+        Used by the customer-facing designer bot, which needs conversation
+        memory rather than the single system+user shot that chat() gives.
+        """
+        if not self.available:
+            return ""
+        try:
+            if self._mode == "new":
+                kwargs: dict = dict(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                if json_mode:
+                    kwargs["response_format"] = {"type": "json_object"}
+                resp = self._client.chat.completions.create(**kwargs)
+                return resp.choices[0].message.content.strip()
+            else:
+                resp = self._client.ChatCompletion.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                return resp["choices"][0]["message"]["content"].strip()
+        except Exception as exc:
+            logger.error(f"OpenAI chat_messages error: {exc}")
+            return ""

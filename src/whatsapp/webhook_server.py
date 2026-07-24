@@ -26,8 +26,14 @@ from src.whatsapp.orchestrator import WhatsAppOrchestrator
 logger = get_logger(__name__)
 
 
-def _allowed_numbers() -> set[str]:
-    raw = os.getenv("WHATSAPP_ALLOWED_NUMBERS", "").strip()
+def _owner_numbers() -> set[str]:
+    """Numbers that get the MANAGEMENT bot (upload / price / delete / …).
+
+    Everyone else is treated as a customer and routed to the AI designer.
+    Defaults to WHATSAPP_ALLOWED_NUMBERS for backward-compatibility; set
+    WHATSAPP_OWNER_NUMBERS to override.
+    """
+    raw = (os.getenv("WHATSAPP_OWNER_NUMBERS") or os.getenv("WHATSAPP_ALLOWED_NUMBERS", "")).strip()
     if not raw:
         return set()
     return {n.strip() for n in raw.split(",") if n.strip()}
@@ -60,7 +66,7 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
     dependencies before the app starts serving traffic.
     """
     app = FastAPI(title="WhatsApp → WooCommerce sync")
-    allowed = _allowed_numbers()
+    owners = _owner_numbers()
 
     @app.get("/")
     def health():
@@ -120,29 +126,66 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
                     # Offload to a background task so we ACK Meta quickly.
                     # Meta requires <20s response or it retries. Our OCR
                     # call alone can be 3-5s, so we MUST background it.
-                    background.add_task(_dispatch, orchestrator, msg, allowed)
+                    background.add_task(_dispatch, orchestrator, msg, owners)
 
         return {"ok": True}
 
     return app
 
 
-def _dispatch(orchestrator: WhatsAppOrchestrator, msg: dict, allowed: set[str]) -> None:
-    """Route a single message to the orchestrator based on its type.
+def _dispatch(orchestrator: WhatsAppOrchestrator, msg: dict, owners: set[str]) -> None:
+    """Route a single message based on WHO sent it and its type.
 
-    Runs in BackgroundTasks (separate from the HTTP response cycle). Any
-    exception here is fully caught and logged — we never let an unhandled
-    error from one message poison the worker.
+    Owners (WHATSAPP_OWNER_NUMBERS) get the management bot: photo-upload,
+    price/shipping/delete commands, product lookup. Everyone else is a
+    customer and gets the AI interior-designer bot (recommends real products).
+
+    Owner test hook: an owner can preview the customer experience by starting
+    a message with "מעצב " — the rest is handled as if a customer sent it.
+    This matters while the app is still in Development mode (only owner numbers
+    can reach the webhook at all), so it's the only way to test the designer
+    end-to-end before Business Verification.
+
+    Runs in BackgroundTasks. Any exception is caught and logged — we never let
+    one bad message poison the worker.
     """
     try:
         from_number = msg.get("from", "")
         msg_id = msg.get("id", "")
         msg_type = msg.get("type", "")
 
-        # ── Allowlist gate ──────────────────────────────────────
-        if allowed and from_number not in allowed:
-            logger.warning(f"Ignored message from non-allowed number: {from_number}")
+        designer = getattr(orchestrator, "designer", None)
+        is_owner = (not owners) or (from_number in owners)
+
+        # Extract text early (needed for the owner test hook + designer).
+        text_body = ""
+        if msg_type == "text":
+            text_body = (msg.get("text", {}) or {}).get("body", "") or ""
+
+        # ── Customer path (non-owner) → AI designer ─────────────
+        if not is_owner:
+            if designer is None:
+                logger.warning("Designer bot not attached; dropping customer message")
+                return
+            if msg_type == "text":
+                designer.handle(from_number, text_body, message_id=msg_id)
+            else:
+                # Designer is text-based; nudge non-text customers to describe.
+                orchestrator.wa.send_text(
+                    from_number,
+                    "שלום! 🙂 אני מיה, המעצבת של הגלריה לעיצוב הבית. "
+                    "ספרו לי במילים מה אתם מחפשים — לאיזה חדר, איזה סגנון ותקציב — ואמליץ לכם על פריטים שיתאימו.",
+                    reply_to_msg_id=msg_id,
+                )
             return
+
+        # ── Owner test hook: "מעצב <text>" previews the customer bot ──
+        if designer is not None and msg_type == "text":
+            stripped = text_body.strip()
+            for kw in ("מעצב", "מעצבת", "designer"):
+                if stripped == kw or stripped.startswith(kw + " "):
+                    designer.handle(from_number, stripped[len(kw):].strip(), message_id=msg_id)
+                    return
 
         # Context: if this is a reply, we'll get context.id pointing to the
         # original message_id. Used to match the price reply to the right

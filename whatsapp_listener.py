@@ -105,7 +105,7 @@ def build_orchestrator() -> WhatsAppOrchestrator:
     ocr = OcrService()
     store = PendingStore()
 
-    return WhatsAppOrchestrator(
+    orchestrator = WhatsAppOrchestrator(
         wa_client=wa_client,
         ocr=ocr,
         store=store,
@@ -118,6 +118,18 @@ def build_orchestrator() -> WhatsAppOrchestrator:
         suppliers_config=suppliers_config,
         shipping_class_map=shipping_class_map,
     )
+
+    # Customer-facing AI interior-designer bot (runs for non-owner numbers).
+    # Attached as an attribute so the webhook can route customers to it while
+    # the orchestrator keeps handling owner/management messages.
+    from src.whatsapp.designer_bot import DesignerBot
+    orchestrator.designer = DesignerBot(
+        wa_client=wa_client,
+        wc_client=wc_client,
+        category_svc=category_svc,
+        ai_client=ai_client,
+    )
+    return orchestrator
 
 
 def main() -> int:
