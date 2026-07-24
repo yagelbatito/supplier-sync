@@ -173,8 +173,8 @@ def _dispatch(orchestrator: WhatsAppOrchestrator, msg: dict, owners: set[str]) -
                 # Designer is text-based; nudge non-text customers to describe.
                 orchestrator.wa.send_text(
                     from_number,
-                    "שלום! 🙂 אני מיה, המעצבת של הגלריה לעיצוב הבית. "
-                    "ספרו לי במילים מה אתם מחפשים — לאיזה חדר, איזה סגנון ותקציב — ואמליץ לכם על פריטים שיתאימו.",
+                    "שלום! 🙂 אני סמדר AI, המעצבת של הגלריה לעיצוב הבית. "
+                    "ספרו לי במילים מה אתם מחפשים — לאיזה חדר, איזה סגנון ותקציב — ואביא לכם את ההמלצות של סמדר.",
                     reply_to_msg_id=msg_id,
                 )
             return
