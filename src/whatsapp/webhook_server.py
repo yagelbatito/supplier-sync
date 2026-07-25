@@ -80,6 +80,13 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
     except Exception as exc:
         logger.warning(f"category tool not mounted: {exc}")
 
+    # Conversation viewer (read customer↔bot chats — no native inbox exists).
+    try:
+        from src.whatsapp.conversations_tool import register_conversations_tool
+        register_conversations_tool(app)
+    except Exception as exc:
+        logger.warning(f"conversations tool not mounted: {exc}")
+
     @app.get("/webhook/whatsapp", response_class=PlainTextResponse)
     def verify(
         hub_mode: str = Query("", alias="hub.mode"),

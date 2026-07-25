@@ -22,6 +22,7 @@ import time
 from typing import Optional
 
 from src.core.logger import get_logger
+from src.whatsapp.conversation_log import log_message
 
 logger = get_logger(__name__)
 
@@ -88,6 +89,8 @@ class DesignerBot:
             )
             return
 
+        log_message(from_number, "user", text)
+
         session = self._session(from_number)
         session["history"].append({"role": "user", "content": text})
         session["history"] = session["history"][-_MAX_TURNS:]
@@ -101,6 +104,7 @@ class DesignerBot:
         if not reply:
             reply = "אשמח לעזור לך לעצב! 🙂 מה אתה מחפש — לאיזה חדר, ובאיזה סגנון?"
         session["history"].append({"role": "assistant", "content": reply})
+        log_message(from_number, "bot", reply)
 
         self.wa.send_text(from_number, reply, reply_to_msg_id=message_id)
 
@@ -111,6 +115,8 @@ class DesignerBot:
             request_text = " | ".join(recent_user) or text
             products = self._recommend(search, request_text)
             if products:
+                names = ", ".join(p.get("name", "") for p in products)
+                log_message(from_number, "rec", f"המלצות שנשלחו: {names}")
                 for p in products:
                     self._send_card(from_number, p)
             else:
