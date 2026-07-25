@@ -18,7 +18,9 @@ Design (why it's built this way):
     a returning customer starts fresh after a while.
 """
 import json
+import os
 import time
+from datetime import datetime
 from typing import Optional
 
 from src.core.logger import get_logger
@@ -70,13 +72,14 @@ _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת �
 - כשהלקוח מתלבט — תן ביטחון והצע חלופה, בלי ללחוץ בכוח.
 - לעולם אל תמליץ על קטגוריה שלא קיימת ברשימה.
 
-## קנייה ותשלום — חשוב מאוד:
-- כשהלקוח רוצה לקנות מוצר מסוים, **או שואל כמה זה עולה / כמה לשלם** — **הגדר את השדה "order"** עם שם המוצר ואת **הכמות** (qty) שהוא ביקש (אם ציין "3 כיסאות" → qty:3; אם לא ציין — qty:1). שמור על "reply" קצר וחם ("איזה כיף, בחירה מצוינת! 😊"). ⚠️ **אל תכתוב מחירים או סכומים בעצמך** — המערכת מחשבת ומודיעה ללקוח את המחיר הכולל, את גובה המקדמה (50% — המינימום לפתיחת הזמנה), ומבקשת אמצעי תשלום.
-- כשהלקוח בוחר אמצעי תשלום — **הגדר את "payment"** ו-"reply" קצר וחם ("מעולה, שמחה לסגור! 😊"). המערכת תוסיף את פרטי התשלום המדויקים ואת הסכום.
-  - אשראי → "credit" · ביט → "bit" · העברה בנקאית → "bank" · מזומן → "cash"
-- מדיניות התשלום שלנו: לפתיחת הזמנה נדרשת מקדמה של חצי מהסכום. במזומן — חצי מראש (אשראי/ביט/העברה, חובה) והיתרה במזומן לשליח בקבלת ההזמנה.
-- ⚠️ אל תכתוב בעצמך קישורים, פרטי חשבון או סכומים — המערכת עושה זאת מדויק.
-- "order" ו-"payment" = null בכל שלב אחר.
+## קנייה, תשלום וסגירת הזמנה — חשוב מאוד:
+1. **בחירת מוצר**: כשהלקוח רוצה לקנות מוצר, או שואל כמה זה עולה / כמה לשלם — הגדר "order" עם שם המוצר וכמות (qty; אם ציין "3 כיסאות"→3, אחרת 1). ⚠️ אל תכתוב מחירים/סכומים בעצמך — המערכת מחשבת ומודיעה ללקוח את הסכום ואת המקדמה (50%).
+2. **אחרי הבחירה — אל תמליץ על מוצרים נוספים ואל תשלח עוד תמונות/דגמים.** המערכת שואלת את הלקוח אם ירצה להוסיף עוד משהו. אם הלקוח רוצה להוסיף פריט נוסף — הגדר שוב "order" עם הפריט (הוא יתווסף להזמנה). אם סיים — ממשיכים לתשלום.
+3. **תשלום**: כשהלקוח בוחר אמצעי תשלום — הגדר "payment" (credit/bit/bank/cash) ו-"reply" קצר וחם ("מעולה, שמחה לסגור! 😊"). המערכת שולחת פרטי תשלום מדויקים + סכום.
+4. **פרטי לקוח**: אחרי התשלום ייאספו פרטי הלקוח. כשהלקוח מוסר **שם מלא + כתובת + טלפון** — הגדר "customer": {{"name":"...","address":"...","phone":"..."}}. הגדר אותו **רק כשיש את שלושת הפרטים**; אם חסר משהו — בקש בעדינות רק את מה שחסר. המערכת תפתח את ההזמנה ותשלח אישור.
+- מדיניות: מקדמה של 50% לפתיחת הזמנה. מזומן = חצי מראש (אשראי/ביט/העברה, חובה) + חצי לשליח.
+- ⚠️ לעולם אל תכתוב בעצמך קישורים, פרטי חשבון או סכומים — המערכת עושה זאת מדויק.
+- כל השדות = null בשלב שאינו רלוונטי.
 
 ## הקטגוריות הזמינות בחנות (בחר מתוכן בלבד כשאתה מחפש):
 {categories}
@@ -91,11 +94,13 @@ _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת �
      "max_price": <מספר או null>
   }},
   "order": {{"product": "<שם המוצר>", "qty": <כמות, ברירת מחדל 1>}} או null,
-  "payment": "credit"|"bit"|"bank"|"cash"|null
+  "payment": "credit"|"bit"|"bank"|"cash"|null,
+  "customer": {{"name": "<שם מלא>", "address": "<כתובת מלאה>", "phone": "<טלפון>"}} או null
 }}
-- "search": מלא רק כשאתה ממליץ על מוצרים (1-2 קטגוריות); אחרת null. "keywords" אופציונלי.
-- "order": מלא כשהלקוח רוצה לקנות מוצר ספציפי או שואל את מחירו/כמה לשלם (כולל הכמות); אחרת null.
-- "payment": מלא רק כשהלקוח בחר אמצעי תשלום; אחרת null."""
+- "search": מלא רק כשאתה ממליץ על מוצרים (1-2 קטגוריות), ורק לפני שהלקוח בחר מוצר; אחרת null.
+- "order": מלא כשהלקוח רוצה לקנות/להוסיף מוצר או שואל מחיר/כמה לשלם (כולל הכמות); אחרת null.
+- "payment": מלא רק כשהלקוח בחר אמצעי תשלום; אחרת null.
+- "customer": מלא רק כשיש שם+כתובת+טלפון מלאים; אחרת null."""
 
 
 class DesignerBot:
@@ -130,7 +135,7 @@ class DesignerBot:
             [{"role": "system", "content": self._system_prompt()}] + session["history"],
             max_tokens=700, temperature=0.6, json_mode=True,
         )
-        reply, search, order, payment = self._parse(raw)
+        reply, search, order, payment, customer = self._parse(raw)
 
         if not reply:
             reply = "אשמח לעזור לך לעצב! 🙂 מה אתה מחפש — לאיזה חדר, ובאיזה סגנון?"
@@ -139,7 +144,10 @@ class DesignerBot:
 
         self.wa.send_text(from_number, reply, reply_to_msg_id=message_id)
 
-        if search:
+        # Recommend ONLY while the customer is still browsing — not once the cart
+        # has items, and not when this same message is a concrete order/price
+        # request (naming a specific model shouldn't trigger a gallery).
+        if search and not session.get("cart") and not order:
             # request_text = what the customer actually asked, so the reranker
             # can judge closeness (colour/material/style) — not just category.
             recent_user = [m["content"] for m in session["history"] if m["role"] == "user"][-2:]
@@ -166,47 +174,23 @@ class DesignerBot:
                     "אפשר לשנות סגנון, צבע או תקציב.",
                 )
 
-        # Customer chose a product to buy → state price × qty + 50% deposit.
-        if order:
-            prod = self._resolve_price(session, order["product"])
-            if prod and prod.get("price"):
-                qty = order["qty"]
-                unit = float(prod["price"])
-                total = unit * qty
-                dep = int(round(total * _DEPOSIT_PCT))
-                prev = session.get("order")
-                session["order"] = {"id": prod.get("id"), "name": prod.get("name", ""),
-                                    "unit": unit, "qty": qty, "total": total}
-                # Don't repeat the price line if it's the same order restated in
-                # the same breath as choosing a payment method.
-                same = prev and prev.get("id") == prod.get("id") and prev.get("qty") == qty
-                if not (same and payment):
-                    if qty > 1:
-                        line = f"{qty} × {prod['name']} ({_money(unit)} ₪ ליחידה) = *{_money(total)} ₪*."
-                    else:
-                        line = f"מחיר {prod['name']} — *{_money(total)} ₪*."
-                    msg = (f"{line}\nלפתיחת הזמנה נדרשת מקדמה של 50%: *{_money(dep)} ₪*.\n\n"
-                           f"איך נוח לך לשלם? אשראי 💳 / ביט 📱 / העברה בנקאית 🏦 / מזומן 💵")
-                    log_message(from_number, "bot", msg)
-                    self.wa.send_text(from_number, msg)
-            else:
-                self.wa.send_text(
-                    from_number,
-                    "אשמח לעזור לך לסגור! על איזה מוצר בדיוק מדובר? "
-                    "כתוב/כתבי לי את שם הדגם ואבדוק לך מחיר וזמינות. 🙂",
-                )
+        # Add a product to the cart (skip if payment is set this turn — the model
+        # sometimes restates the order alongside the payment choice, which would
+        # otherwise double-add the line).
+        if order and not payment:
+            self._add_to_cart(from_number, session, order)
 
-        # Payment details are sent by CODE (exact link/account/amount, never
-        # model-typed) using the selected order's total for the 50% deposit.
-        if payment and payment in _PAY_METHODS:
-            order_p = session.get("order")
-            total = dep = None
-            if order_p and order_p.get("total"):
-                total = float(order_p["total"])
-                dep = int(round(total * _DEPOSIT_PCT))
-            block = self._payment_text(payment, total, dep)
-            log_message(from_number, "bot", block)
-            self.wa.send_text(from_number, block)
+        # Payment details — exact link/account/amount sent by CODE (never
+        # model-typed), using the CART total for the 50% deposit. Skip if the
+        # customer is finalizing (details in the same turn) so we don't re-send
+        # the payment block right before the confirmation.
+        if payment and payment in _PAY_METHODS and not customer:
+            self._send_payment(from_number, session, payment)
+
+        # Customer gave full details after paying → open the order (notify owner
+        # + confirm to customer).
+        if customer and session.get("cart"):
+            self._finalize_order(from_number, session, customer)
 
     # ── internals ────────────────────────────────────────────────
     def _session(self, phone: str) -> dict:
@@ -225,9 +209,9 @@ class DesignerBot:
         return _SYSTEM.format(categories=self._cats_cache)
 
     @staticmethod
-    def _parse(raw: str) -> tuple[str, Optional[dict], Optional[dict], Optional[str]]:
+    def _parse(raw: str) -> tuple[str, Optional[dict], Optional[dict], Optional[str], Optional[dict]]:
         if not raw:
-            return "", None, None, None
+            return "", None, None, None, None
         txt = raw.strip()
         if txt.startswith("```"):
             txt = txt.strip("`")
@@ -237,7 +221,7 @@ class DesignerBot:
             data = json.loads(txt)
         except Exception:
             # Model didn't return JSON — treat the whole thing as the reply.
-            return raw.strip(), None, None, None
+            return raw.strip(), None, None, None, None
         reply = (data.get("reply") or "").strip()
         search = data.get("search")
         if not isinstance(search, dict):
@@ -246,7 +230,20 @@ class DesignerBot:
         payment = data.get("payment")
         if payment not in _PAY_METHODS:
             payment = None
-        return reply, search, order, payment
+        customer = DesignerBot._parse_customer(data.get("customer"))
+        return reply, search, order, payment, customer
+
+    @staticmethod
+    def _parse_customer(raw) -> Optional[dict]:
+        """Return {name, address, phone} only when all three are present."""
+        if not isinstance(raw, dict):
+            return None
+        name = (raw.get("name") or "").strip()
+        address = (raw.get("address") or "").strip()
+        phone = (raw.get("phone") or "").strip()
+        if name and address and phone:
+            return {"name": name, "address": address, "phone": phone}
+        return None
 
     @staticmethod
     def _parse_order(raw) -> Optional[dict]:
@@ -445,6 +442,104 @@ class DesignerBot:
                     f"(חובה לפתיחת ההזמנה), והיתרה במזומן לשליח בקבלת ההזמנה.\n\n"
                     f"הקישור לתשלום המקדמה:\n{_PAY_LINK}")
         return ""
+
+    @staticmethod
+    def _cart_total(cart: list) -> float:
+        return sum(float(it.get("total") or 0) for it in cart)
+
+    def _add_to_cart(self, from_number: str, session: dict, order: dict) -> None:
+        prod = self._resolve_price(session, order["product"])
+        if not (prod and prod.get("price")):
+            self.wa.send_text(
+                from_number,
+                "אשמח לעזור לך לסגור! על איזה מוצר בדיוק מדובר? "
+                "כתוב/כתבי לי את שם הדגם ואבדוק לך מחיר וזמינות. 🙂",
+            )
+            return
+        qty = order["qty"]
+        unit = float(prod["price"])
+        cart = session.setdefault("cart", [])
+        for it in cart:  # already in cart → bump quantity
+            if it["id"] == prod.get("id"):
+                it["qty"] += qty
+                it["total"] = it["unit"] * it["qty"]
+                break
+        else:
+            cart.append({"id": prod.get("id"), "name": prod.get("name", ""),
+                         "unit": unit, "qty": qty, "total": unit * qty})
+        grand = self._cart_total(cart)
+        dep = int(round(grand * _DEPOSIT_PCT))
+        if len(cart) == 1:
+            head = (f"{qty} × {prod['name']} ({_money(unit)} ₪ ליחידה) = *{_money(grand)} ₪*."
+                    if qty > 1 else f"מחיר {prod['name']} — *{_money(grand)} ₪*.")
+        else:
+            head = (f"✓ הוספתי {qty} × {prod['name']} להזמנה.\n"
+                    f"סה\"כ עד כה: *{_money(grand)} ₪* ({len(cart)} פריטים).")
+        msg = (f"{head}\nמקדמה לפתיחת הזמנה (50%): *{_money(dep)} ₪*.\n\n"
+               f"רוצה להוסיף עוד משהו להזמנה? אם לא — איך נוח לך לשלם? "
+               f"אשראי 💳 / ביט 📱 / העברה בנקאית 🏦 / מזומן 💵")
+        log_message(from_number, "bot", msg)
+        self.wa.send_text(from_number, msg)
+
+    def _send_payment(self, from_number: str, session: dict, method: str) -> None:
+        cart = session.get("cart") or []
+        total = dep = None
+        if cart:
+            total = self._cart_total(cart)
+            dep = int(round(total * _DEPOSIT_PCT))
+        session["pay_method"] = method
+        block = self._payment_text(method, total, dep)
+        log_message(from_number, "bot", block)
+        self.wa.send_text(from_number, block)
+        ask = ("📋 *מיד לאחר התשלום* — שלח/י לי כאן שם מלא, כתובת מלאה וטלפון, "
+               "ואפתח את ההזמנה ואשלח לך אישור 🙏")
+        log_message(from_number, "bot", ask)
+        self.wa.send_text(from_number, ask)
+
+    def _finalize_order(self, from_number: str, session: dict, customer: dict) -> None:
+        cart = session.get("cart") or []
+        if not cart:
+            return
+        grand = self._cart_total(cart)
+        dep = int(round(grand * _DEPOSIT_PCT))
+        method = session.get("pay_method")
+        method_he = {"credit": "אשראי", "bit": "ביט", "bank": "העברה בנקאית",
+                     "cash": "מזומן"}.get(method, "—")
+        ref = "WA-" + datetime.now().strftime("%y%m%d-%H%M")
+        items = "\n".join(f"• {it['qty']} × {it['name']} — {_money(it['total'])} ₪" for it in cart)
+
+        # Confirmation → customer
+        cust_msg = (f"✅ ההזמנה שלך נקלטה! מס' הזמנה {ref}\n\n{items}\n"
+                    f"סה\"כ: *{_money(grand)} ₪* · מקדמה: {_money(dep)} ₪\n"
+                    f"אמצעי תשלום: {method_he}\n\n"
+                    f"👤 {customer['name']}\n📍 {customer['address']}\n📞 {customer['phone']}\n\n"
+                    f"תודה שקנית בהגלריה לעיצוב הבית 🙏 ניצור קשר לתיאום ההובלה.")
+        log_message(from_number, "bot", cust_msg)
+        self.wa.send_text(from_number, cust_msg)
+
+        # Full order → shop owner's WhatsApp (they open it in their system)
+        owner = self._owner_number()
+        if owner:
+            owner_msg = (f"🛒 *הזמנה חדשה מהבוט!* {ref}\n\n{items}\n"
+                         f"סה\"כ: {_money(grand)} ₪ · מקדמה 50%: {_money(dep)} ₪\n"
+                         f"אמצעי תשלום: {method_he}\n\n"
+                         f"👤 {customer['name']}\n📍 {customer['address']}\n📞 {customer['phone']}\n"
+                         f"💬 וואטסאפ לקוח: +{from_number}")
+            self.wa.send_text(owner, owner_msg)
+            logger.info(f"[designer] order {ref} sent to owner {owner}")
+        else:
+            logger.warning("[designer] no owner number configured for order notify")
+
+        # Reset for the next order (keep the session/history alive)
+        session["cart"] = []
+        session.pop("pay_method", None)
+        session.pop("last_products", None)
+
+    @staticmethod
+    def _owner_number() -> str:
+        raw = (os.getenv("ORDER_NOTIFY_NUMBER") or os.getenv("WHATSAPP_OWNER_NUMBERS")
+               or os.getenv("WHATSAPP_ALLOWED_NUMBERS") or "").strip()
+        return raw.split(",")[0].strip() if raw else ""
 
     def _send_card(self, to: str, p: dict) -> None:
         name = p.get("name", "")
