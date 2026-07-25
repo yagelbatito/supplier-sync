@@ -38,19 +38,22 @@ _MAX_CARDS = 4                  # never spam more than this many products
 _POOL_SIZE = 30                 # candidate pool the reranker chooses from
 
 # ── Payment details ──────────────────────────────────────────────
-# EDIT HERE to change payment info. These exact strings are sent by CODE (not
-# written by the model) so links and account numbers can never be mangled.
+# EDIT HERE to change payment info. Sent by CODE (not written by the model) so
+# links / account numbers / amounts can never be mangled.
 _PAY_LINK = "https://meshulam.co.il/quick_payment?b=d132be4676e7ddd481668c4502c1b5fc"
 _BIT_PHONE = "050-3356806"
-_PAYMENT_BLOCKS = {
-    "credit": f"💳 לתשלום מאובטח באשראי — בקישור:\n{_PAY_LINK}\n\nברגע שתסיים/י, שלח/י לי צילום מסך של האישור ואשריין לך את ההזמנה 🙌",
-    "bit": f"📱 לתשלום בביט:\nאפשר דרך הקישור: {_PAY_LINK}\nאו העברת ביט ישירה למספר {_BIT_PHONE} (הגלריה לעיצוב הבית).\n\nאחרי התשלום שלח/י לי צילום אישור 🙏",
-    "bank": "🏦 לתשלום בהעברה בנקאית:\n"
-            "בנק מזרחי טפחות (20) · סניף 416 · חשבון 327065\n"
-            "ע\"ש אזולאי דורון\n\n"
-            "אחרי ההעברה אשמח שתשלח/י צילום אישור ואשריין את ההזמנה 🙏",
-    "cash": f"💵 בתשלום מזומן:\nאפשר לשלם חצי מהסכום בקישור התשלום, וחצי במזומן לשליח בקבלת ההזמנה.\n\nהקישור לחצי הראשון:\n{_PAY_LINK}",
-}
+_BANK_DETAILS = ("בנק מזרחי טפחות (20) · סניף 416 · חשבון 327065\n"
+                 "ע\"ש אזולאי דורון")
+_PAY_METHODS = {"credit", "bit", "bank", "cash"}
+_DEPOSIT_PCT = 0.5   # a 50% deposit is the minimum to open an order
+
+
+def _money(v) -> str:
+    """Format a price as whole shekels (no trailing decimals)."""
+    try:
+        return f"{int(round(float(v))):,}"
+    except (ValueError, TypeError):
+        return str(v)
 
 _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת המכירות של חנות הריהוט והעיצוב "הגלריה לעיצוב הבית" של סמדר בטיטו (smadarbetitohome.co.il).
 אתה מדבר עברית, בגוף ראשון, בחום ובגובה העיניים — כמו מעצבת אמיתית שאוהבת לעזור ללקוח לעצב את הבית, וגם יודעת לסגור עסקה בנעימות ובביטחון.
@@ -67,15 +70,13 @@ _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת �
 - כשהלקוח מתלבט — תן ביטחון והצע חלופה, בלי ללחוץ בכוח.
 - לעולם אל תמליץ על קטגוריה שלא קיימת ברשימה.
 
-## תשלום — חשוב מאוד:
-כשהלקוח מביע רצון לקנות/לשלם, שאל אותו איך נוח לו לשלם והצג את האפשרויות: **אשראי, ביט, העברה בנקאית, או מזומן**.
-כשהוא בוחר אמצעי — כתוב משפט חם קצר (למשל "מעולה, שמחה לסגור! 😊") **והגדר את השדה "payment"** בערך המתאים.
-⚠️ אל תכתוב בעצמך את הקישור או פרטי החשבון — המערכת מוסיפה אותם אוטומטית ובדיוק. אתה רק מגדיר את "payment":
-- אשראי → "credit"
-- ביט → "bit"
-- העברה בנקאית → "bank"
-- מזומן → "cash"
-בכל שלב אחר — "payment" חייב להיות null.
+## קנייה ותשלום — חשוב מאוד:
+- כשהלקוח רוצה לקנות מוצר מסוים, **או שואל כמה זה עולה / כמה לשלם** — **הגדר את השדה "order"** עם שם המוצר ואת **הכמות** (qty) שהוא ביקש (אם ציין "3 כיסאות" → qty:3; אם לא ציין — qty:1). שמור על "reply" קצר וחם ("איזה כיף, בחירה מצוינת! 😊"). ⚠️ **אל תכתוב מחירים או סכומים בעצמך** — המערכת מחשבת ומודיעה ללקוח את המחיר הכולל, את גובה המקדמה (50% — המינימום לפתיחת הזמנה), ומבקשת אמצעי תשלום.
+- כשהלקוח בוחר אמצעי תשלום — **הגדר את "payment"** ו-"reply" קצר וחם ("מעולה, שמחה לסגור! 😊"). המערכת תוסיף את פרטי התשלום המדויקים ואת הסכום.
+  - אשראי → "credit" · ביט → "bit" · העברה בנקאית → "bank" · מזומן → "cash"
+- מדיניות התשלום שלנו: לפתיחת הזמנה נדרשת מקדמה של חצי מהסכום. במזומן — חצי מראש (אשראי/ביט/העברה, חובה) והיתרה במזומן לשליח בקבלת ההזמנה.
+- ⚠️ אל תכתוב בעצמך קישורים, פרטי חשבון או סכומים — המערכת עושה זאת מדויק.
+- "order" ו-"payment" = null בכל שלב אחר.
 
 ## הקטגוריות הזמינות בחנות (בחר מתוכן בלבד כשאתה מחפש):
 {categories}
@@ -89,9 +90,11 @@ _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת �
      "min_price": <מספר או null>,
      "max_price": <מספר או null>
   }},
+  "order": {{"product": "<שם המוצר>", "qty": <כמות, ברירת מחדל 1>}} או null,
   "payment": "credit"|"bit"|"bank"|"cash"|null
 }}
 - "search": מלא רק כשאתה ממליץ על מוצרים (1-2 קטגוריות); אחרת null. "keywords" אופציונלי.
+- "order": מלא כשהלקוח רוצה לקנות מוצר ספציפי או שואל את מחירו/כמה לשלם (כולל הכמות); אחרת null.
 - "payment": מלא רק כשהלקוח בחר אמצעי תשלום; אחרת null."""
 
 
@@ -127,7 +130,7 @@ class DesignerBot:
             [{"role": "system", "content": self._system_prompt()}] + session["history"],
             max_tokens=700, temperature=0.6, json_mode=True,
         )
-        reply, search, payment = self._parse(raw)
+        reply, search, order, payment = self._parse(raw)
 
         if not reply:
             reply = "אשמח לעזור לך לעצב! 🙂 מה אתה מחפש — לאיזה חדר, ובאיזה סגנון?"
@@ -143,6 +146,13 @@ class DesignerBot:
             request_text = " | ".join(recent_user) or text
             products = self._recommend(search, request_text)
             if products:
+                # Remember what we showed (with prices) so a later "I'll buy X"
+                # can be priced without another lookup.
+                session["last_products"] = [
+                    {"id": p.get("id"), "name": p.get("name", ""),
+                     "price": p.get("price") or p.get("regular_price")}
+                    for p in products
+                ]
                 names = ", ".join(p.get("name", "") for p in products)
                 log_message(from_number, "rec", f"המלצות שנשלחו: {names}")
                 for p in products:
@@ -156,9 +166,45 @@ class DesignerBot:
                     "אפשר לשנות סגנון, צבע או תקציב.",
                 )
 
-        # Payment details are sent by CODE (exact link/account, never model-typed).
-        if payment and payment in _PAYMENT_BLOCKS:
-            block = _PAYMENT_BLOCKS[payment]
+        # Customer chose a product to buy → state price × qty + 50% deposit.
+        if order:
+            prod = self._resolve_price(session, order["product"])
+            if prod and prod.get("price"):
+                qty = order["qty"]
+                unit = float(prod["price"])
+                total = unit * qty
+                dep = int(round(total * _DEPOSIT_PCT))
+                prev = session.get("order")
+                session["order"] = {"id": prod.get("id"), "name": prod.get("name", ""),
+                                    "unit": unit, "qty": qty, "total": total}
+                # Don't repeat the price line if it's the same order restated in
+                # the same breath as choosing a payment method.
+                same = prev and prev.get("id") == prod.get("id") and prev.get("qty") == qty
+                if not (same and payment):
+                    if qty > 1:
+                        line = f"{qty} × {prod['name']} ({_money(unit)} ₪ ליחידה) = *{_money(total)} ₪*."
+                    else:
+                        line = f"מחיר {prod['name']} — *{_money(total)} ₪*."
+                    msg = (f"{line}\nלפתיחת הזמנה נדרשת מקדמה של 50%: *{_money(dep)} ₪*.\n\n"
+                           f"איך נוח לך לשלם? אשראי 💳 / ביט 📱 / העברה בנקאית 🏦 / מזומן 💵")
+                    log_message(from_number, "bot", msg)
+                    self.wa.send_text(from_number, msg)
+            else:
+                self.wa.send_text(
+                    from_number,
+                    "אשמח לעזור לך לסגור! על איזה מוצר בדיוק מדובר? "
+                    "כתוב/כתבי לי את שם הדגם ואבדוק לך מחיר וזמינות. 🙂",
+                )
+
+        # Payment details are sent by CODE (exact link/account/amount, never
+        # model-typed) using the selected order's total for the 50% deposit.
+        if payment and payment in _PAY_METHODS:
+            order_p = session.get("order")
+            total = dep = None
+            if order_p and order_p.get("total"):
+                total = float(order_p["total"])
+                dep = int(round(total * _DEPOSIT_PCT))
+            block = self._payment_text(payment, total, dep)
             log_message(from_number, "bot", block)
             self.wa.send_text(from_number, block)
 
@@ -179,9 +225,9 @@ class DesignerBot:
         return _SYSTEM.format(categories=self._cats_cache)
 
     @staticmethod
-    def _parse(raw: str) -> tuple[str, Optional[dict], Optional[str]]:
+    def _parse(raw: str) -> tuple[str, Optional[dict], Optional[dict], Optional[str]]:
         if not raw:
-            return "", None, None
+            return "", None, None, None
         txt = raw.strip()
         if txt.startswith("```"):
             txt = txt.strip("`")
@@ -191,15 +237,37 @@ class DesignerBot:
             data = json.loads(txt)
         except Exception:
             # Model didn't return JSON — treat the whole thing as the reply.
-            return raw.strip(), None, None
+            return raw.strip(), None, None, None
         reply = (data.get("reply") or "").strip()
         search = data.get("search")
         if not isinstance(search, dict):
             search = None
+        order = DesignerBot._parse_order(data.get("order"))
         payment = data.get("payment")
-        if payment not in _PAYMENT_BLOCKS:
+        if payment not in _PAY_METHODS:
             payment = None
-        return reply, search, payment
+        return reply, search, order, payment
+
+    @staticmethod
+    def _parse_order(raw) -> Optional[dict]:
+        """Normalize the order field to {product, qty} or None.
+
+        Accepts either an object {"product","qty"} or a bare product string
+        (older/looser model output), defaulting qty to 1.
+        """
+        product, qty = None, 1
+        if isinstance(raw, dict):
+            product = raw.get("product") or raw.get("name")
+            qty = raw.get("qty") or raw.get("quantity") or 1
+        elif isinstance(raw, str):
+            product = raw
+        if not isinstance(product, str) or not product.strip():
+            return None
+        try:
+            qty = max(1, int(float(qty)))
+        except (ValueError, TypeError):
+            qty = 1
+        return {"product": product.strip(), "qty": qty}
 
     def _recommend(self, search: dict, request_text: str) -> list:
         """Return the products CLOSEST to what the customer asked for.
@@ -301,6 +369,82 @@ class DesignerBot:
             return products
         ordered = [products[i] for i in picks if isinstance(i, int) and 0 <= i < len(products)]
         return ordered or products
+
+    def _resolve_price(self, session: dict, name: str) -> Optional[dict]:
+        """Find the product (and its price) the customer wants to buy.
+
+        Robust to loose/misspelled names (e.g. "כיסא בר טיטי כאמל" vs the real
+        "כסא בר טיטי קאמל"): casts a wide net (full phrase + each significant
+        word) then fuzzy-ranks the pool to pick the closest — not just the first
+        search hit. Prefers a just-recommended product when it clearly matches.
+        Returns {id, name, price} or None.
+        """
+        from thefuzz import fuzz
+        name = (name or "").strip()
+        if not name:
+            return None
+
+        # 1. Build a candidate pool from the catalog (+ recently recommended).
+        pool: dict = {}
+        for p in session.get("last_products", []):
+            if p.get("id") and p.get("price"):
+                pool[p["id"]] = {"id": p["id"], "name": p.get("name", ""), "price": p["price"]}
+        queries = [name] + [w for w in name.split() if len(w) >= 3]
+        for q in queries:
+            if len(pool) >= 20:
+                break
+            try:
+                res = self.wc.get("products", params={
+                    "search": q, "per_page": 6,
+                    "status": "publish", "stock_status": "instock",
+                }) or []
+            except Exception as exc:
+                logger.error(f"[designer] price lookup failed: {exc}")
+                res = []
+            for p in res:
+                pid = p.get("id")
+                if pid and pid not in pool:
+                    pool[pid] = {"id": pid, "name": p.get("name", ""),
+                                 "price": p.get("price") or p.get("regular_price")}
+
+        # 2. Pick the closest by fuzzy token match; require a reasonable score.
+        best, best_score = None, -1
+        for p in pool.values():
+            if not p.get("price"):
+                continue
+            sc = fuzz.token_set_ratio(name, p.get("name", ""))
+            if sc > best_score:
+                best, best_score = p, sc
+        if best and best_score >= 55:
+            return best
+        return None
+
+    @staticmethod
+    def _payment_text(method: str, total: Optional[float], dep: Optional[int]) -> str:
+        """Build the exact payment message, with the deposit amount when known."""
+        have = total is not None and dep is not None
+        rest = int(round(total - dep)) if have else None
+        if method == "credit":
+            head = f"💳 לתשלום מקדמה של {_money(dep)} ₪ באשראי" if have else "💳 לתשלום מאובטח באשראי"
+            return f"{head} — בקישור:\n{_PAY_LINK}\n\nברגע שתסיים/י שלח/י צילום אישור ואשריין את ההזמנה 🙌"
+        if method == "bit":
+            head = f"📱 לתשלום מקדמה של {_money(dep)} ₪ בביט" if have else "📱 לתשלום בביט"
+            return (f"{head}:\nדרך הקישור: {_PAY_LINK}\n"
+                    f"או העברת ביט ישירה למספר {_BIT_PHONE} (הגלריה לעיצוב הבית).\n\n"
+                    f"אחרי התשלום שלח/י צילום אישור 🙏")
+        if method == "bank":
+            head = f"🏦 להעברת מקדמה של {_money(dep)} ₪" if have else "🏦 לתשלום בהעברה בנקאית"
+            return f"{head}:\n{_BANK_DETAILS}\n\nאחרי ההעברה אשמח שתשלח/י צילום אישור ואשריין את ההזמנה 🙏"
+        if method == "cash":
+            if have:
+                return (f"💵 בתשלום מזומן:\nלפתיחת הזמנה יש לשלם מקדמה של *{_money(dep)} ₪* (חצי) מראש — "
+                        f"באשראי, ביט או העברה בנקאית (חובה לפתיחת ההזמנה).\n"
+                        f"את היתרה ({_money(rest)} ₪) משלמים במזומן לשליח בקבלת ההזמנה.\n\n"
+                        f"הקישור לתשלום המקדמה:\n{_PAY_LINK}")
+            return (f"💵 בתשלום מזומן:\nלפתיחת הזמנה יש לשלם חצי מהסכום מראש — באשראי, ביט או העברה בנקאית "
+                    f"(חובה לפתיחת ההזמנה), והיתרה במזומן לשליח בקבלת ההזמנה.\n\n"
+                    f"הקישור לתשלום המקדמה:\n{_PAY_LINK}")
+        return ""
 
     def _send_card(self, to: str, p: dict) -> None:
         name = p.get("name", "")
