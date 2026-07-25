@@ -37,23 +37,50 @@ _MAX_TURNS = 12                 # keep the last N messages in context
 _MAX_CARDS = 4                  # never spam more than this many products
 _POOL_SIZE = 30                 # candidate pool the reranker chooses from
 
-_SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ויועצת המכירות של חנות הריהוט והעיצוב "הגלריה לעיצוב הבית" של סמדר בטיטו (smadarbetitohome.co.il).
-אתה מדבר עברית, בגוף ראשון, בחום ובגובה העיניים — כמו מעצבת אמיתית שרוצה לעזור ללקוח לעצב את הבית.
-כשאתה ממליץ על מוצרים, הצג אותם כ"ההמלצות של סמדר" — כלומר בחירה אישית ומוקפדת מהחנות.
+# ── Payment details ──────────────────────────────────────────────
+# EDIT HERE to change payment info. These exact strings are sent by CODE (not
+# written by the model) so links and account numbers can never be mangled.
+_PAY_LINK = "https://meshulam.co.il/quick_payment?b=d132be4676e7ddd481668c4502c1b5fc"
+_BIT_PHONE = "050-3356806"
+_PAYMENT_BLOCKS = {
+    "credit": f"💳 לתשלום מאובטח באשראי — בקישור:\n{_PAY_LINK}\n\nברגע שתסיים/י, שלח/י לי צילום מסך של האישור ואשריין לך את ההזמנה 🙌",
+    "bit": f"📱 לתשלום בביט:\nאפשר דרך הקישור: {_PAY_LINK}\nאו העברת ביט ישירה למספר {_BIT_PHONE} (הגלריה לעיצוב הבית).\n\nאחרי התשלום שלח/י לי צילום אישור 🙏",
+    "bank": "🏦 לתשלום בהעברה בנקאית:\n"
+            "בנק מזרחי טפחות (20) · סניף 416 · חשבון 327065\n"
+            "ע\"ש אזולאי דורון\n\n"
+            "אחרי ההעברה אשמח שתשלח/י צילום אישור ואשריין את ההזמנה 🙏",
+    "cash": f"💵 בתשלום מזומן:\nאפשר לשלם חצי מהסכום בקישור התשלום, וחצי במזומן לשליח בקבלת ההזמנה.\n\nהקישור לחצי הראשון:\n{_PAY_LINK}",
+}
 
-המטרה שלך: להבין מה הלקוח צריך, ואז להמליץ לו על מוצרים אמיתיים מהחנות שיתאימו לו.
+_SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת המכירות של חנות הריהוט והעיצוב "הגלריה לעיצוב הבית" של סמדר בטיטו (smadarbetitohome.co.il).
+אתה מדבר עברית, בגוף ראשון, בחום ובגובה העיניים — כמו מעצבת אמיתית שאוהבת לעזור ללקוח לעצב את הבית, וגם יודעת לסגור עסקה בנעימות ובביטחון.
+כשאתה ממליץ על מוצרים, הצג אותם כ"ההמלצות של סמדר" — בחירה אישית ומוקפדת מהחנות.
 
-איך לנהל את השיחה:
-- אם חסר לך מידע — שאל שאלה אחת או שתיים קצרות וממוקדות בכל פעם (לא חקירה). מה שעוזר: לאיזה חדר? איזה סגנון (מודרני/כפרי/קלאסי/תעשייתי)? צבעים מועדפים? תקציב בערך? מידות או גודל החדר?
-- אל תשאל יותר מדי — ברגע שיש לך מושג סביר על מה שהלקוח מחפש, המלץ. עדיף להמליץ ולדייק תוך כדי מאשר לתחקר.
-- כשאתה ממליץ, כתוב משפט חם שמסביר למה בחרת ומה מתאים — ואל תמציא שמות מוצרים או מחירים. המוצרים עצמם יישלחו ללקוח אוטומטית מהקטלוג האמיתי אחרי ההודעה שלך.
-- אם הלקוח שואל משהו כללי (שעות פתיחה, משלוחים, החזרות) — ענה בקצרה ובנעימות והצע להמשיך לעזור בעיצוב. אם אינך יודע פרט מסחרי מדויק, אמור שנציג אנושי יחזור אליו.
-- לעולם אל תמליץ על קטגוריה שלא קיימת ברשימה שתקבל.
+## התפקיד שלך (3 דברים):
+1. **לעצב ולהמליץ** — להבין מה הלקוח צריך ולהמליץ על מוצרים אמיתיים מהחנות שיתאימו לו.
+2. **למכור ולהניע לסגירה** — אחרי שהמלצת, קדם את העסקה בעדינות: "רוצה שאשמור לך?", "בא לך שנסגור עכשiu? 😊", הדגש איכות, מלאי מוגבל, ומשלוח עד הבית. בטוח אבל לא לוחץ.
+3. **להוביל לתשלום** — כשהלקוח רוצה לקנות, הובל אותו לתשלום לפי האמצעי שנוח לו.
 
-הקטגוריות הזמינות בחנות (בחר מתוכן בלבד כשאתה מחפש):
+## איך לנהל את השיחה:
+- אם חסר מידע — שאל שאלה אחת-שתיים קצרות (חדר, סגנון, צבע, תקציב, מידות). אל תחקור יותר מדי; ברגע שיש מושג סביר — המלץ.
+- כתוב חם, אישי ובמשפטים קצרים. אל תמציא שמות מוצרים או מחירים — המוצרים נשלחים אוטומטית מהקטלוג אחרי ההודעה שלך.
+- כשהלקוח מתלבט — תן ביטחון והצע חלופה, בלי ללחוץ בכוח.
+- לעולם אל תמליץ על קטגוריה שלא קיימת ברשימה.
+
+## תשלום — חשוב מאוד:
+כשהלקוח מביע רצון לקנות/לשלם, שאל אותו איך נוח לו לשלם והצג את האפשרויות: **אשראי, ביט, העברה בנקאית, או מזומן**.
+כשהוא בוחר אמצעי — כתוב משפט חם קצר (למשל "מעולה, שמחה לסגור! 😊") **והגדר את השדה "payment"** בערך המתאים.
+⚠️ אל תכתוב בעצמך את הקישור או פרטי החשבון — המערכת מוסיפה אותם אוטומטית ובדיוק. אתה רק מגדיר את "payment":
+- אשראי → "credit"
+- ביט → "bit"
+- העברה בנקאית → "bank"
+- מזומן → "cash"
+בכל שלב אחר — "payment" חייב להיות null.
+
+## הקטגוריות הזמינות בחנות (בחר מתוכן בלבד כשאתה מחפש):
 {categories}
 
-אתה חייב להשיב אך ורק ב-JSON תקין במבנה הבא (בלי טקסט מסביב):
+## פורמט התשובה — חובה JSON תקין בלבד (בלי טקסט מסביב):
 {{
   "reply": "<ההודעה בעברית שתישלח ללקוח>",
   "search": {{
@@ -61,10 +88,11 @@ _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ויועצ
      "keywords": "<מילות חיפוש בעברית לשם המוצר, או ריק>",
      "min_price": <מספר או null>,
      "max_price": <מספר או null>
-  }}
+  }},
+  "payment": "credit"|"bit"|"bank"|"cash"|null
 }}
-כשעדיין אינך מוכן להמליץ (אתה שואל שאלה) — החזר "search": null.
-כשאתה ממליץ — מלא את "search" עם 1-2 קטגוריות מתאימות. "keywords" אופציונלי; אם לא בטוח, השאר ריק ותסמוך על הקטגוריה."""
+- "search": מלא רק כשאתה ממליץ על מוצרים (1-2 קטגוריות); אחרת null. "keywords" אופציונלי.
+- "payment": מלא רק כשהלקוח בחר אמצעי תשלום; אחרת null."""
 
 
 class DesignerBot:
@@ -99,7 +127,7 @@ class DesignerBot:
             [{"role": "system", "content": self._system_prompt()}] + session["history"],
             max_tokens=700, temperature=0.6, json_mode=True,
         )
-        reply, search = self._parse(raw)
+        reply, search, payment = self._parse(raw)
 
         if not reply:
             reply = "אשמח לעזור לך לעצב! 🙂 מה אתה מחפש — לאיזה חדר, ובאיזה סגנון?"
@@ -128,6 +156,12 @@ class DesignerBot:
                     "אפשר לשנות סגנון, צבע או תקציב.",
                 )
 
+        # Payment details are sent by CODE (exact link/account, never model-typed).
+        if payment and payment in _PAYMENT_BLOCKS:
+            block = _PAYMENT_BLOCKS[payment]
+            log_message(from_number, "bot", block)
+            self.wa.send_text(from_number, block)
+
     # ── internals ────────────────────────────────────────────────
     def _session(self, phone: str) -> dict:
         now = time.time()
@@ -145,9 +179,9 @@ class DesignerBot:
         return _SYSTEM.format(categories=self._cats_cache)
 
     @staticmethod
-    def _parse(raw: str) -> tuple[str, Optional[dict]]:
+    def _parse(raw: str) -> tuple[str, Optional[dict], Optional[str]]:
         if not raw:
-            return "", None
+            return "", None, None
         txt = raw.strip()
         if txt.startswith("```"):
             txt = txt.strip("`")
@@ -157,12 +191,15 @@ class DesignerBot:
             data = json.loads(txt)
         except Exception:
             # Model didn't return JSON — treat the whole thing as the reply.
-            return raw.strip(), None
+            return raw.strip(), None, None
         reply = (data.get("reply") or "").strip()
         search = data.get("search")
         if not isinstance(search, dict):
             search = None
-        return reply, search
+        payment = data.get("payment")
+        if payment not in _PAYMENT_BLOCKS:
+            payment = None
+        return reply, search, payment
 
     def _recommend(self, search: dict, request_text: str) -> list:
         """Return the products CLOSEST to what the customer asked for.
