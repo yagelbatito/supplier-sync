@@ -19,7 +19,7 @@
     "supplier_name": "Floralis",
     "base_url": "https://www.floralis.co.il",
     "enabled": true,
-    "price_multiplier": 0.80,
+    "price_multiplier": 0.85,
     "round_prices": true,
     "round_to": "X.00",
     "draft_when_out_of_stock": true,
