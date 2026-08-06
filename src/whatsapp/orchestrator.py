@@ -277,10 +277,22 @@ class WhatsAppOrchestrator:
                 "• `אזל <שם>` — סימון אזל מהמלאי\n"
                 "• `מחק <שם>` — מחיקה\n"
                 "• `מחיר <שם> <מחיר>` — עדכון מחיר\n"
-                "• `משלוח <שם> קטן/בינוני/גדול` — עדכון משלוח",
+                "• `משלוח <שם> קטן/בינוני/גדול` — עדכון משלוח\n"
+                "• `הוסף תיאור <שם> | <טקסט>` — הוספה לתיאור\n"
+                "• `החלף תיאור <שם> | <ישן> | <חדש>` — החלפת משפט בתיאור",
                 reply_to_msg_id=message_id,
             )
             return
+        # management: description — append / replace a sentence (before others,
+        # so "תיאור" text isn't swallowed by the product-lookup fallback)
+        for kw in ("הוסף תיאור", "הוסף לתיאור", "תיאור+"):
+            if text.startswith(kw):
+                self._cmd_desc_append(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        for kw in ("החלף תיאור", "החלף בתיאור", "תיאור~"):
+            if text.startswith(kw):
+                self._cmd_desc_replace(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
         # management: mark out of stock + draft
         for kw in ("אזל", "נגמר", "מכר", "מכרתי", "אין במלאי", "נמכר"):
             if text.startswith(kw):
@@ -410,6 +422,69 @@ class WhatsAppOrchestrator:
         except Exception as exc:
             logger.error(f"[WA] shipping update failed: {exc}")
             self.wa.send_text(from_number, "⚠️ עדכון המשלוח נכשל. נסה שוב.", reply_to_msg_id=message_id)
+
+    def _cmd_desc_append(self, from_number: str, args: str, message_id: str) -> None:
+        """`הוסף תיאור <שם> | <טקסט>` — append text to the product description."""
+        name = args.split("|", 1)[0].strip() if "|" in args else ""
+        addition = args.split("|", 1)[1].strip() if "|" in args else ""
+        if not name or not addition:
+            self.wa.send_text(
+                from_number,
+                "שימוש: `הוסף תיאור <שם מוצר> | <הטקסט להוספה>`\n"
+                "למשל: `הוסף תיאור שולחן לורי | משלוח חינם עד הבית`",
+                reply_to_msg_id=message_id)
+            return
+        p = self._resolve_one(from_number, name, message_id, "לעדכן תיאור")
+        if not p:
+            return
+        try:
+            # Re-fetch by id so we edit the CURRENT full description (the search
+            # result can be stale/truncated).
+            full = self.wc_client.get(f"products/{p['id']}")
+            cur = (full.get("description") or "")
+            new_desc = (cur.rstrip() + f"\n<p>{addition}</p>") if cur.strip() else f"<p>{addition}</p>"
+            self.wc_client.put(f"products/{p['id']}", {"description": new_desc})
+            self.wa.send_text(
+                from_number,
+                f'📝 נוסף לתיאור של "{p.get("name","")}":\n"{addition}" ✅',
+                reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] desc append failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון התיאור נכשל. נסה שוב.", reply_to_msg_id=message_id)
+
+    def _cmd_desc_replace(self, from_number: str, args: str, message_id: str) -> None:
+        """`החלף תיאור <שם> | <ישן> | <חדש>` — replace a phrase in the description."""
+        parts = [x.strip() for x in args.split("|")]
+        if len(parts) < 3 or not parts[0] or not parts[1] or not parts[2]:
+            self.wa.send_text(
+                from_number,
+                "שימוש: `החלף תיאור <שם מוצר> | <משפט ישן> | <משפט חדש>`\n"
+                "למשל: `החלף תיאור שולחן לורי | אורך 200 ס\"מ | אורך 220 ס\"מ`",
+                reply_to_msg_id=message_id)
+            return
+        name, old, new = parts[0], parts[1], parts[2]
+        p = self._resolve_one(from_number, name, message_id, "לעדכן תיאור")
+        if not p:
+            return
+        try:
+            full = self.wc_client.get(f"products/{p['id']}")
+            cur = (full.get("description") or "")
+            if old not in cur:
+                self.wa.send_text(
+                    from_number,
+                    f'⚠️ לא נמצא הטקסט "{old}" בתיאור של "{p.get("name","")}".\n'
+                    f"ודא שהוא כתוב בדיוק כמו בתיאור.",
+                    reply_to_msg_id=message_id)
+                return
+            new_desc = cur.replace(old, new, 1)
+            self.wc_client.put(f"products/{p['id']}", {"description": new_desc})
+            self.wa.send_text(
+                from_number,
+                f'📝 עודכן בתיאור של "{p.get("name","")}":\n"{old}" → "{new}" ✅',
+                reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] desc replace failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון התיאור נכשל. נסה שוב.", reply_to_msg_id=message_id)
 
     # ── Core sync logic ──────────────────────────────────────────
 
