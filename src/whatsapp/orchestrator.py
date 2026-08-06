@@ -279,7 +279,8 @@ class WhatsAppOrchestrator:
                 "• `מחיר <שם> <מחיר>` — עדכון מחיר\n"
                 "• `משלוח <שם> קטן/בינוני/גדול` — עדכון משלוח\n"
                 "• `הוסף תיאור <שם> | <טקסט>` — הוספה לתיאור\n"
-                "• `החלף תיאור <שם> | <ישן> | <חדש>` — החלפת משפט בתיאור",
+                "• `החלף תיאור <שם> | <ישן> | <חדש>` — החלפת משפט בתיאור\n"
+                "• `מקט <שם>` — שליפת מק\"ט של מוצר",
                 reply_to_msg_id=message_id,
             )
             return
@@ -292,6 +293,11 @@ class WhatsAppOrchestrator:
         for kw in ("החלף תיאור", "החלף בתיאור", "תיאור~"):
             if text.startswith(kw):
                 self._cmd_desc_replace(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        # lookup: fetch a product's SKU — "מקט <שם>"
+        for kw in ("מקט", "מק\"ט", "מק״ט", "מק'ט", "sku", "SKU"):
+            if text.startswith(kw):
+                self._cmd_sku(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
         # management: mark out of stock + draft
         for kw in ("אזל", "נגמר", "מכר", "מכרתי", "אין במלאי", "נמכר"):
@@ -422,6 +428,20 @@ class WhatsAppOrchestrator:
         except Exception as exc:
             logger.error(f"[WA] shipping update failed: {exc}")
             self.wa.send_text(from_number, "⚠️ עדכון המשלוח נכשל. נסה שוב.", reply_to_msg_id=message_id)
+
+    def _cmd_sku(self, from_number: str, query: str, message_id: str) -> None:
+        """`מקט <שם>` — reply with the product's SKU."""
+        if not query:
+            self.wa.send_text(from_number, "כתוב שם מוצר. למשל: `מקט שולחן לורי`", reply_to_msg_id=message_id)
+            return
+        p = self._resolve_one(from_number, query, message_id, "לשליפת מק\"ט")
+        if not p:
+            return
+        sku = p.get("sku") or "(אין מק\"ט)"
+        self.wa.send_text(
+            from_number,
+            f'🔖 "{p.get("name","")}"\nמק"ט: {sku}',
+            reply_to_msg_id=message_id)
 
     def _cmd_desc_append(self, from_number: str, args: str, message_id: str) -> None:
         """`הוסף תיאור <שם> | <טקסט>` — append text to the product description."""
