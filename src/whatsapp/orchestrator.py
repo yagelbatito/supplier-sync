@@ -267,22 +267,33 @@ class WhatsAppOrchestrator:
             logger.error(f"[WA] product search failed: {exc}")
             return []
 
+    # Owner-only: this handler is reached ONLY for owner numbers (the webhook
+    # routes non-owners to the designer bot), so the menu is private by design.
+    _MENU = (
+        "🛠️ *תפריט ניהול*\n\n"
+        "📷 *העלאת מוצר* — שלח תמונה + פרטים\n"
+        "🔍 *בדיקת מחיר* — `<שם מוצר>`\n"
+        "🔖 *מק\"ט* — `מקט <שם>`\n"
+        "💰 *עדכון מחיר* — `מחיר <שם> <מחיר>`\n"
+        "🚚 *עדכון משלוח* — `משלוח <שם> קטן/בינוני/גדול`\n"
+        "📝 *הוספה לתיאור* — `הוסף תיאור <שם> | <טקסט>`\n"
+        "🔄 *החלפת משפט בתיאור* — `החלף תיאור <שם> | <ישן> | <חדש>`\n"
+        "📦 *סימון אזל* — `אזל <שם>`\n"
+        "🗑️ *מחיקה* — `מחק <שם>`\n\n"
+        "הקלד *תפריט* בכל רגע כדי לראות שוב את הרשימה."
+    )
+
+    def _send_menu(self, from_number: str, message_id: str) -> None:
+        self.wa.send_text(from_number, self._MENU, reply_to_msg_id=message_id)
+
     def _handle_command_or_query(self, from_number: str, body: str, message_id: str) -> None:
         text = (body or "").strip()
         if not text:
-            self.wa.send_text(
-                from_number,
-                "שלח *תמונה* של מוצר כדי להעלות, או *שם מוצר* כדי לבדוק מחיר.\n"
-                "פקודות:\n"
-                "• `אזל <שם>` — סימון אזל מהמלאי\n"
-                "• `מחק <שם>` — מחיקה\n"
-                "• `מחיר <שם> <מחיר>` — עדכון מחיר\n"
-                "• `משלוח <שם> קטן/בינוני/גדול` — עדכון משלוח\n"
-                "• `הוסף תיאור <שם> | <טקסט>` — הוספה לתיאור\n"
-                "• `החלף תיאור <שם> | <ישן> | <חדש>` — החלפת משפט בתיאור\n"
-                "• `מקט <שם>` — שליפת מק\"ט של מוצר",
-                reply_to_msg_id=message_id,
-            )
+            self._send_menu(from_number, message_id)
+            return
+        # show the command menu on request
+        if text in ("תפריט", "עזרה", "פקודות", "menu", "Menu", "help", "?", "עזרא"):
+            self._send_menu(from_number, message_id)
             return
         # management: description — append / replace a sentence (before others,
         # so "תיאור" text isn't swallowed by the product-lookup fallback)
