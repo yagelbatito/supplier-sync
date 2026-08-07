@@ -276,8 +276,8 @@ class WhatsAppOrchestrator:
         "🔖 *מק\"ט* — `מקט <שם>`\n"
         "💰 *עדכון מחיר* — `מחיר <שם> <מחיר>`\n"
         "🚚 *עדכון משלוח* — `משלוח <שם> קטן/בינוני/גדול`\n"
-        "📝 *הוספה לתיאור* — `הוסף תיאור <שם> | <טקסט>`\n"
-        "🔄 *החלפת משפט בתיאור* — `החלף תיאור <שם> | <ישן> | <חדש>`\n"
+        "📝 *הוספה לתיאור* — `הוסף תיאור <שם>, <טקסט>`\n"
+        "🔄 *החלפת משפט בתיאור* — `החלף תיאור <שם>, <ישן>, <חדש>`\n"
         "📦 *סימון אזל* — `אזל <שם>`\n"
         "🗑️ *מחיקה* — `מחק <שם>`\n\n"
         "הקלד *תפריט* בכל רגע כדי לראות שוב את הרשימה."
@@ -454,15 +454,23 @@ class WhatsAppOrchestrator:
             f'🔖 "{p.get("name","")}"\nמק"ט: {sku}',
             reply_to_msg_id=message_id)
 
+    @staticmethod
+    def _desc_split(args: str, maxparts: int) -> list:
+        """Split description args by comma OR pipe (pipe wins if present, so a
+        text that itself contains commas can still be delimited with |)."""
+        sep = "|" if "|" in args else ","
+        return [x.strip() for x in args.split(sep, maxparts - 1)]
+
     def _cmd_desc_append(self, from_number: str, args: str, message_id: str) -> None:
-        """`הוסף תיאור <שם> | <טקסט>` — append text to the product description."""
-        name = args.split("|", 1)[0].strip() if "|" in args else ""
-        addition = args.split("|", 1)[1].strip() if "|" in args else ""
+        """`הוסף תיאור <שם>, <טקסט>` — append text to the product description."""
+        parts = self._desc_split(args, 2)
+        name = parts[0] if len(parts) >= 1 else ""
+        addition = parts[1] if len(parts) >= 2 else ""
         if not name or not addition:
             self.wa.send_text(
                 from_number,
-                "שימוש: `הוסף תיאור <שם מוצר> | <הטקסט להוספה>`\n"
-                "למשל: `הוסף תיאור שולחן לורי | משלוח חינם עד הבית`",
+                "שימוש: `הוסף תיאור <שם מוצר>, <הטקסט להוספה>`\n"
+                "למשל: `הוסף תיאור שולחן לורי, משלוח חינם עד הבית`",
                 reply_to_msg_id=message_id)
             return
         p = self._resolve_one(from_number, name, message_id, "לעדכן תיאור")
@@ -484,13 +492,13 @@ class WhatsAppOrchestrator:
             self.wa.send_text(from_number, "⚠️ עדכון התיאור נכשל. נסה שוב.", reply_to_msg_id=message_id)
 
     def _cmd_desc_replace(self, from_number: str, args: str, message_id: str) -> None:
-        """`החלף תיאור <שם> | <ישן> | <חדש>` — replace a phrase in the description."""
-        parts = [x.strip() for x in args.split("|")]
+        """`החלף תיאור <שם>, <ישן>, <חדש>` — replace a phrase in the description."""
+        parts = self._desc_split(args, 3)  # name, old, new (new may contain commas)
         if len(parts) < 3 or not parts[0] or not parts[1] or not parts[2]:
             self.wa.send_text(
                 from_number,
-                "שימוש: `החלף תיאור <שם מוצר> | <משפט ישן> | <משפט חדש>`\n"
-                "למשל: `החלף תיאור שולחן לורי | אורך 200 ס\"מ | אורך 220 ס\"מ`",
+                "שימוש: `החלף תיאור <שם מוצר>, <משפט ישן>, <משפט חדש>`\n"
+                "למשל: `החלף תיאור שולחן לורי, אורך 200 ס\"מ, אורך 220 ס\"מ`",
                 reply_to_msg_id=message_id)
             return
         name, old, new = parts[0], parts[1], parts[2]
