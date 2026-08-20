@@ -359,23 +359,50 @@ class WhatsAppOrchestrator:
             else:
                 self.wa.send_text(from_number, caption)
 
+    def _find_by_sku(self, sku: str) -> Optional[dict]:
+        """Exact SKU lookup (lets the user target ONE product among same-named
+        variants). Tries the value as-is and upper-cased (our SKUs are upper)."""
+        sku = (sku or "").strip()
+        if not sku:
+            return None
+        for candidate in {sku, sku.upper()}:
+            try:
+                res = self.wc_client.get("products", params={"sku": candidate})
+            except Exception:
+                res = None
+            if res:
+                return res[0]
+        return None
+
     def _resolve_one(self, from_number: str, query: str, message_id: str, verb: str) -> Optional[dict]:
-        """Pick a single product to act on, or message the user and return None."""
+        """Pick a single product to act on, or message the user and return None.
+
+        Accepts a NAME or an exact מק"ט (SKU). When several products share the
+        name, we list them WITH their SKU so the user can re-run the command
+        with the exact SKU to target one precisely.
+        """
         if not query:
             self.wa.send_text(from_number, f"כתוב את שם המוצר {verb}. למשל: `אזל שולחן לורי`", reply_to_msg_id=message_id)
             return None
-        results = self._search_products(query, limit=6)
+        # exact SKU wins — the precise way to pick among same-named products
+        by_sku = self._find_by_sku(query)
+        if by_sku:
+            return by_sku
+        results = self._search_products(query, limit=8)
         if not results:
             self.wa.send_text(from_number, f'🔍 לא נמצא מוצר בשם "{query}".', reply_to_msg_id=message_id)
             return None
-        # exact (case-insensitive) name match wins even if there are several hits
+        # exact (case-insensitive) name match wins — but only if it's unique
         exact = [p for p in results if p.get("name", "").strip() == query.strip()]
         if len(results) == 1:
             return results[0]
         if len(exact) == 1:
             return exact[0]
-        lines = [f'נמצאו {len(results)} מוצרים ל"{query}". כתוב שם מדויק יותר כדי {verb}:']
-        lines += [f"• {p.get('name','')} ({p.get('price','?')} ₪)" for p in results[:6]]
+        lines = [f'נמצאו {len(results)} מוצרים ל"{query}". כדי לדייק — הרץ שוב את הפקודה עם המק"ט מהרשימה:']
+        for p in results[:8]:
+            price = p.get("price") or p.get("regular_price") or "?"
+            sku = p.get("sku") or "—"
+            lines.append(f'• {p.get("name","")} — {price} ₪  ·  מק"ט: {sku}')
         self.wa.send_text(from_number, "\n".join(lines), reply_to_msg_id=message_id)
         return None
 
