@@ -161,9 +161,19 @@ def update_existing_product(product, existing, config, product_svc, stats,
             stats["out_of_stock"] += 1
             changes.append("stock→outofstock")
         elif product.is_available and config.allow_republish:
-            product_svc.set_publish(wc_id)
-            product_svc.update_stock_only(wc_id, STOCK_IN)
-            changes.append("stock→instock")
+            # NEVER republish a product with no image. A no-image product is
+            # kept as a draft by create/fixup; the image-fixup block above
+            # publishes it if it manages to add an image. If it's still
+            # imageless here, mark it in-stock but LEAVE IT A DRAFT — otherwise
+            # a returning-to-stock item goes live without a picture.
+            has_image = bool(existing.get("images")) or ("+image, published" in changes)
+            if has_image:
+                product_svc.set_publish(wc_id)
+                product_svc.update_stock_only(wc_id, STOCK_IN)
+                changes.append("stock→instock")
+            else:
+                product_svc.update_stock_only(wc_id, STOCK_IN)
+                changes.append("instock but no image → kept draft")
         else:
             product_svc.update_stock_only(wc_id, product.stock_status)
             changes.append(f"stock→{product.stock_status}")
