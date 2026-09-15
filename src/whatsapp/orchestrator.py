@@ -312,7 +312,9 @@ class WhatsAppOrchestrator:
                 self._cmd_sku(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
         # management: force-refresh a product (bust cache) — "נקה מטמון <שם>"
-        for kw in ("נקה מטמון", "נקה זיכרון", "ניקוי מטמון", "רענן"):
+        # Longer "…מוצר" variants first so the whole prefix is stripped.
+        for kw in ("נקה מטמון", "נקה זיכרון", "ניקוי מטמון",
+                   "רענון מוצר", "רענן מוצר", "רענון", "רענן"):
             if text.startswith(kw):
                 self._cmd_clear_cache(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
