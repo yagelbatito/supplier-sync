@@ -279,7 +279,8 @@ class WhatsAppOrchestrator:
         "📝 *הוספה לתיאור* — `הוסף תיאור <שם>, <טקסט>`\n"
         "🔄 *החלפת משפט בתיאור* — `החלף תיאור <שם>, <ישן>, <חדש>`\n"
         "📦 *סימון אזל* — `אזל <שם>`\n"
-        "🗑️ *מחיקה* — `מחק <שם>`\n\n"
+        "🗑️ *מחיקה* — `מחק <שם>`\n"
+        "♻️ *ניקוי מטמון* — `נקה מטמון <שם>`\n\n"
         "הקלד *תפריט* בכל רגע כדי לראות שוב את הרשימה."
     )
 
@@ -309,6 +310,11 @@ class WhatsAppOrchestrator:
         for kw in ("מקט", "מק\"ט", "מק״ט", "מק'ט", "sku", "SKU"):
             if text.startswith(kw):
                 self._cmd_sku(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        # management: force-refresh a product (bust cache) — "נקה מטמון <שם>"
+        for kw in ("נקה מטמון", "נקה זיכרון", "ניקוי מטמון", "רענן"):
+            if text.startswith(kw):
+                self._cmd_clear_cache(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
         # management: mark out of stock + draft
         for kw in ("אזל", "נגמר", "מכר", "מכרתי", "אין במלאי", "נמכר"):
@@ -480,6 +486,29 @@ class WhatsAppOrchestrator:
             from_number,
             f'🔖 "{p.get("name","")}"\nמק"ט: {sku}',
             reply_to_msg_id=message_id)
+
+    def _cmd_clear_cache(self, from_number: str, query: str, message_id: str) -> None:
+        """`נקה מטמון <שם>` — force-resave the product so WooCommerce refreshes
+        its cache/transients and cache plugins auto-purge its page."""
+        p = self._resolve_one(from_number, query, message_id, "לרענון")
+        if not p:
+            return
+        try:
+            # Re-apply current values → WC re-saves (clean_post_cache + shipping
+            # transients) and any cache plugin purges the product page on update.
+            payload = {"status": p.get("status") or "publish"}
+            if p.get("shipping_class"):
+                payload["shipping_class"] = p["shipping_class"]
+            self.wc_client.put(f"products/{p['id']}", payload)
+            self.wa.send_text(
+                from_number,
+                f'♻️ "{p.get("name","")}" רוענן — המטמון של המוצר נוקה.\n'
+                f'בדוק שוב בעוד דקה. אם עדיין לא מתעדכן — ייתכן שצריך לנקות מטמון כללי '
+                f'מתוסף המטמון באתר.',
+                reply_to_msg_id=message_id)
+        except Exception as exc:
+            logger.error(f"[WA] clear cache failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ הרענון נכשל. נסה שוב.", reply_to_msg_id=message_id)
 
     @staticmethod
     def _desc_split(args: str, maxparts: int) -> list:
