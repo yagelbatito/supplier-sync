@@ -19,7 +19,7 @@ Category rules live in config/golyan_mapping.py (add rules there, not here).
     python golyan_sync.py --apply    # create categories + upsert products
     python golyan_sync.py --limit N  # cap products (testing)
 """
-import sys, io, math, collections
+import sys, io, math, time, collections
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", write_through=True)
 import warnings; warnings.filterwarnings("ignore")
 from dotenv import load_dotenv; load_dotenv()
@@ -40,6 +40,29 @@ SKU_PREFIX = "JUL"
 
 def _norm(n: str) -> str:
     return " ".join((n or "").split()).strip().lower()
+
+
+def get_all_resilient(c, endpoint, per_page=100, **params):
+    """Like client.get_all but retries each page on transient connection resets
+    (the store intermittently drops long scans with WinError 10054)."""
+    results, page = [], 1
+    while True:
+        batch = None
+        for attempt in range(5):
+            try:
+                batch = c.get(endpoint, params={"per_page": per_page, "page": page, **params})
+                break
+            except Exception as exc:
+                if attempt == 4:
+                    raise
+                time.sleep(2 * (attempt + 1))
+        if not batch:
+            break
+        results.extend(batch)
+        if len(batch) < per_page:
+            break
+        page += 1
+    return results
 
 APPLY = "--apply" in sys.argv
 LIMIT = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else 0
@@ -153,7 +176,7 @@ def main():
     # a same-named item that arrives under a different SKU)
     print("warming SKU cache + name index…", flush=True)
     existing_names = set()
-    for p in c.get_all("products", status="any"):
+    for p in get_all_resilient(c, "products", status="any"):
         sk = p.get("sku")
         if sk:
             product_svc._sku_cache[sk] = p
