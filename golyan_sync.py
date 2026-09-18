@@ -24,11 +24,22 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", write_through
 import warnings; warnings.filterwarnings("ignore")
 from dotenv import load_dotenv; load_dotenv()
 
-from src.core.config_loader import load_app_settings
+from src.core.config_loader import load_app_settings, load_shipping_class_mapping
+from src.core.constants import META_SYNC_MANAGED
+from src.core.utils import stable_sku
+from src.models.product import SupplierProduct
 from src.woocommerce.client import WooCommerceClient
 from src.woocommerce.category_service import CategoryService
+from src.woocommerce.product_service import ProductService
 from src.suppliers.golyan_supplier import fetch_all
 from config.golyan_mapping import map_product, FURNITURE_TARGETS, NEW_CATEGORIES
+
+SUPPLIER_KEY = "julian"     # keep continuity with existing JUL-* products
+SKU_PREFIX = "JUL"
+
+
+def _norm(n: str) -> str:
+    return " ".join((n or "").split()).strip().lower()
 
 APPLY = "--apply" in sys.argv
 LIMIT = int(sys.argv[sys.argv.index("--limit") + 1]) if "--limit" in sys.argv else 0
@@ -124,6 +135,72 @@ def main():
     if not APPLY:
         print("\n(DRY-RUN — no writes. Review the reports above, then run --apply.)", flush=True)
         return
+
+    # ═══════════════ APPLY ═══════════════
+    product_svc = ProductService(c)
+    shipping_map = load_shipping_class_mapping()
+
+    # create the missing sub-categories (spec §7)
+    for leaf, parent in NEW_CATEGORIES:
+        if cat_svc.resolve(leaf, fallback=""):
+            continue
+        pid = cat_svc.resolve(parent, fallback="")
+        res = c.post("products/categories", {"name": leaf, "parent": pid or 0})
+        cat_svc._categories[leaf] = res.get("id")
+        print(f"  created category '{leaf}' (parent {parent})", flush=True)
+
+    # warm SKU cache + name index (SKU is primary identity; name-dedup guards
+    # a same-named item that arrives under a different SKU)
+    print("warming SKU cache + name index…", flush=True)
+    existing_names = set()
+    for p in c.get_all("products", status="any"):
+        sk = p.get("sku")
+        if sk:
+            product_svc._sku_cache[sk] = p
+        meta = {m["key"]: m["value"] for m in p.get("meta_data", [])}
+        if str(meta.get(META_SYNC_MANAGED, "")).lower() in ("true", "1"):
+            existing_names.add(_norm(p.get("name", "")))
+
+    created = updated = dup_name = failed = no_image = 0
+    for src_sku, p in by_sku.items():
+        if "_target" not in p:
+            continue
+        sku = stable_sku(supplier_key=SUPPLIER_KEY, product_id=src_sku, product_url="", prefix=SKU_PREFIX)
+        existing = product_svc.find_by_sku(sku)
+        # name-dedup: same name under a different SKU → skip creating a duplicate
+        if not existing and _norm(p["name"]) in existing_names:
+            dup_name += 1
+            continue
+        available = p["in_stock"]
+        prod = SupplierProduct(
+            supplier_name="Golyan", supplier_key=SUPPLIER_KEY, supplier_product_id=src_sku,
+            supplier_url="", sku=sku, name=p["name"], original_description=p["description"],
+            price=p["price"], stock_status="instock" if available else "outofstock",
+            is_available=available, supplier_category=", ".join(p["source_cats"]),
+            mapped_category=p["_target"], images=p["images"],
+            status="publish" if available else "draft",
+        )
+        prod.calculated_price = p["_price"]
+        images_payload = [{"src": u} for u in p["images"]]
+        if not images_payload:
+            prod.mark_for_review("No image from Golyan"); no_image += 1
+        cat_ids = cat_svc.resolve_list(p["_target"])
+        ship = shipping_map.get(p["_target"], "")
+        try:
+            if existing:
+                product_svc.update(existing["id"], prod, cat_ids, images_payload, shipping_class=ship)
+                updated += 1
+            else:
+                product_svc.create(prod, cat_ids, images_payload, shipping_class=ship)
+                existing_names.add(_norm(p["name"])); created += 1
+            if (created + updated) % 50 == 0:
+                print(f"   …{created} created, {updated} updated", flush=True)
+        except Exception as exc:
+            failed += 1
+            print(f"   FAIL [{sku}] {p['name'][:34]}: {str(exc)[:80]}", flush=True)
+
+    print(f"\n=== APPLIED. created={created} updated={updated} dup-name-skipped={dup_name} "
+          f"no-image={no_image} failed={failed} ===", flush=True)
 
 
 if __name__ == "__main__":

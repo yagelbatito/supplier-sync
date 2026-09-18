@@ -13,6 +13,8 @@ source categories as clean JSON.
      description}
 Price is in shekels (the Store API gives minor units).
 """
+import html
+import re
 import time
 from typing import Optional
 
@@ -35,16 +37,22 @@ def _price_to_shekels(prices: dict) -> float:
         return 0.0
 
 
+def _clean(s: str) -> str:
+    """Decode HTML entities and strip tags — Store-API text is HTML-escaped."""
+    s = html.unescape(s or "")
+    s = re.sub(r"<[^>]+>", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def _normalize(raw: dict) -> Optional[dict]:
     sku = (raw.get("sku") or "").strip()
-    name = (raw.get("name") or "").strip()
+    name = _clean(raw.get("name") or "")
     if not name:
         return None
     prices = raw.get("prices") or {}
     images = [im.get("src") for im in (raw.get("images") or []) if im.get("src")]
-    source_cats = [c.get("name", "").strip() for c in (raw.get("categories") or []) if c.get("name")]
-    # short_description / description come back as HTML; keep raw for enrichment
-    desc = raw.get("description") or raw.get("short_description") or ""
+    source_cats = [_clean(c.get("name", "")) for c in (raw.get("categories") or []) if c.get("name")]
+    desc = _clean(raw.get("description") or raw.get("short_description") or "")
     return {
         "sku": sku,
         "code": str(raw.get("id") or sku),
