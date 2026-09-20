@@ -25,6 +25,7 @@ from typing import Optional
 
 from src.core.logger import get_logger
 from src.whatsapp.conversation_log import log_message
+from src.whatsapp import bot_settings
 
 logger = get_logger(__name__)
 
@@ -103,6 +104,19 @@ _SYSTEM = """אתה "סמדר AI", מעצבת הפנים האישית ואשת �
 - "customer": מלא רק כשיש שם+כתובת+טלפון מלאים; אחרת null."""
 
 
+# Register the hard-coded values as the canonical DEFAULTS. The bot then reads
+# everything through bot_settings.get(...), so the /bot admin panel can override
+# any of these live (stored in WP, applied without a redeploy).
+bot_settings.set_defaults({
+    "system_prompt": _SYSTEM,
+    "skip_categories": sorted(_SKIP_CATS),
+    "pay_link": _PAY_LINK,
+    "bit_phone": _BIT_PHONE,
+    "bank_details": _BANK_DETAILS,
+    "deposit_pct": _DEPOSIT_PCT,
+})
+
+
 class DesignerBot:
     def __init__(self, wa_client, wc_client, category_svc, ai_client):
         self.wa = wa_client
@@ -111,6 +125,22 @@ class DesignerBot:
         self.ai = ai_client
         self._sessions: dict[str, dict] = {}
         self._cats_cache: Optional[str] = None
+        # Load live settings from WP (best-effort; falls back to defaults).
+        try:
+            bot_settings.load(self.wc)
+        except Exception as exc:
+            logger.warning(f"bot_settings initial load failed: {exc}")
+
+    def reload_settings(self) -> None:
+        """Clear caches so the next customer message uses the freshest data:
+        re-read the WP settings and rebuild the category list. Called by the
+        /bot admin panel's 'apply now' button — no redeploy needed."""
+        self._cats_cache = None
+        try:
+            self.category_svc.load()
+        except Exception as exc:
+            logger.warning(f"reload_settings: category reload failed: {exc}")
+        bot_settings.load(self.wc, force=True)
 
     # ── public entry ─────────────────────────────────────────────
     def handle(self, from_number: str, text: str, message_id: Optional[str] = None) -> None:
@@ -204,9 +234,10 @@ class DesignerBot:
 
     def _system_prompt(self) -> str:
         if self._cats_cache is None:
-            names = [n for n in (self.category_svc.category_names or []) if n not in _SKIP_CATS]
+            skip = set(bot_settings.get("skip_categories") or [])
+            names = [n for n in (self.category_svc.category_names or []) if n not in skip]
             self._cats_cache = "، ".join(names) if names else "ספות, כורסאות, שולחנות, מראות, תאורה, שטיחים, כריות נוי"
-        return _SYSTEM.format(categories=self._cats_cache)
+        return (bot_settings.get("system_prompt") or _SYSTEM).format(categories=self._cats_cache)
 
     @staticmethod
     def _parse(raw: str) -> tuple[str, Optional[dict], Optional[dict], Optional[str], Optional[dict]]:
@@ -418,29 +449,34 @@ class DesignerBot:
 
     @staticmethod
     def _payment_text(method: str, total: Optional[float], dep: Optional[int]) -> str:
-        """Build the exact payment message, with the deposit amount when known."""
+        """Build the exact payment message, with the deposit amount when known.
+        Payment details come from the live settings (bot_settings) so the /bot
+        panel can change link / bit number / bank details without a redeploy."""
+        pay_link = bot_settings.get("pay_link")
+        bit_phone = bot_settings.get("bit_phone")
+        bank_details = bot_settings.get("bank_details")
         have = total is not None and dep is not None
         rest = int(round(total - dep)) if have else None
         if method == "credit":
             head = f"💳 לתשלום מקדמה של {_money(dep)} ₪ באשראי" if have else "💳 לתשלום מאובטח באשראי"
-            return f"{head} — בקישור:\n{_PAY_LINK}\n\nברגע שתסיים/י שלח/י צילום אישור ואשריין את ההזמנה 🙌"
+            return f"{head} — בקישור:\n{pay_link}\n\nברגע שתסיים/י שלח/י צילום אישור ואשריין את ההזמנה 🙌"
         if method == "bit":
             head = f"📱 לתשלום מקדמה של {_money(dep)} ₪ בביט" if have else "📱 לתשלום בביט"
-            return (f"{head}:\nדרך הקישור: {_PAY_LINK}\n"
-                    f"או העברת ביט ישירה למספר {_BIT_PHONE} (הגלריה לעיצוב הבית).\n\n"
+            return (f"{head}:\nדרך הקישור: {pay_link}\n"
+                    f"או העברת ביט ישירה למספר {bit_phone} (הגלריה לעיצוב הבית).\n\n"
                     f"אחרי התשלום שלח/י צילום אישור 🙏")
         if method == "bank":
             head = f"🏦 להעברת מקדמה של {_money(dep)} ₪" if have else "🏦 לתשלום בהעברה בנקאית"
-            return f"{head}:\n{_BANK_DETAILS}\n\nאחרי ההעברה אשמח שתשלח/י צילום אישור ואשריין את ההזמנה 🙏"
+            return f"{head}:\n{bank_details}\n\nאחרי ההעברה אשמח שתשלח/י צילום אישור ואשריין את ההזמנה 🙏"
         if method == "cash":
             if have:
                 return (f"💵 בתשלום מזומן:\nלפתיחת הזמנה יש לשלם מקדמה של *{_money(dep)} ₪* (חצי) מראש — "
                         f"באשראי, ביט או העברה בנקאית (חובה לפתיחת ההזמנה).\n"
                         f"את היתרה ({_money(rest)} ₪) משלמים במזומן לשליח בקבלת ההזמנה.\n\n"
-                        f"הקישור לתשלום המקדמה:\n{_PAY_LINK}")
+                        f"הקישור לתשלום המקדמה:\n{pay_link}")
             return (f"💵 בתשלום מזומן:\nלפתיחת הזמנה יש לשלם חצי מהסכום מראש — באשראי, ביט או העברה בנקאית "
                     f"(חובה לפתיחת ההזמנה), והיתרה במזומן לשליח בקבלת ההזמנה.\n\n"
-                    f"הקישור לתשלום המקדמה:\n{_PAY_LINK}")
+                    f"הקישור לתשלום המקדמה:\n{pay_link}")
         return ""
 
     @staticmethod
@@ -468,14 +504,15 @@ class DesignerBot:
             cart.append({"id": prod.get("id"), "name": prod.get("name", ""),
                          "unit": unit, "qty": qty, "total": unit * qty})
         grand = self._cart_total(cart)
-        dep = int(round(grand * _DEPOSIT_PCT))
+        dep = int(round(grand * bot_settings.get("deposit_pct")))
         if len(cart) == 1:
             head = (f"{qty} × {prod['name']} ({_money(unit)} ₪ ליחידה) = *{_money(grand)} ₪*."
                     if qty > 1 else f"מחיר {prod['name']} — *{_money(grand)} ₪*.")
         else:
             head = (f"✓ הוספתי {qty} × {prod['name']} להזמנה.\n"
                     f"סה\"כ עד כה: *{_money(grand)} ₪* ({len(cart)} פריטים).")
-        msg = (f"{head}\nמקדמה לפתיחת הזמנה (50%): *{_money(dep)} ₪*.\n\n"
+        dep_pct = int(round(bot_settings.get("deposit_pct") * 100))
+        msg = (f"{head}\nמקדמה לפתיחת הזמנה ({dep_pct}%): *{_money(dep)} ₪*.\n\n"
                f"רוצה להוסיף עוד משהו להזמנה? אם לא — איך נוח לך לשלם? "
                f"אשראי 💳 / ביט 📱 / העברה בנקאית 🏦 / מזומן 💵")
         log_message(from_number, "bot", msg)
@@ -486,7 +523,7 @@ class DesignerBot:
         total = dep = None
         if cart:
             total = self._cart_total(cart)
-            dep = int(round(total * _DEPOSIT_PCT))
+            dep = int(round(total * bot_settings.get("deposit_pct")))
         session["pay_method"] = method
         block = self._payment_text(method, total, dep)
         log_message(from_number, "bot", block)
@@ -501,7 +538,7 @@ class DesignerBot:
         if not cart:
             return
         grand = self._cart_total(cart)
-        dep = int(round(grand * _DEPOSIT_PCT))
+        dep = int(round(grand * bot_settings.get("deposit_pct")))
         method = session.get("pay_method")
         method_he = {"credit": "אשראי", "bit": "ביט", "bank": "העברה בנקאית",
                      "cash": "מזומן"}.get(method, "—")
@@ -521,7 +558,7 @@ class DesignerBot:
         owner = self._owner_number()
         if owner:
             owner_msg = (f"🛒 *הזמנה חדשה מהבוט!* {ref}\n\n{items}\n"
-                         f"סה\"כ: {_money(grand)} ₪ · מקדמה 50%: {_money(dep)} ₪\n"
+                         f"סה\"כ: {_money(grand)} ₪ · מקדמה {int(round(bot_settings.get('deposit_pct')*100))}%: {_money(dep)} ₪\n"
                          f"אמצעי תשלום: {method_he}\n\n"
                          f"👤 {customer['name']}\n📍 {customer['address']}\n📞 {customer['phone']}\n"
                          f"💬 וואטסאפ לקוח: +{from_number}")

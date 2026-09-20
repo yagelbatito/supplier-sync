@@ -87,6 +87,13 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
     except Exception as exc:
         logger.warning(f"conversations tool not mounted: {exc}")
 
+    # Live bot admin panel (edit prompt/payment/categories; clear cache).
+    try:
+        from src.whatsapp.bot_admin_tool import register_bot_admin_tool
+        register_bot_admin_tool(app, orchestrator)
+    except Exception as exc:
+        logger.warning(f"bot admin tool not mounted: {exc}")
+
     @app.get("/webhook/whatsapp", response_class=PlainTextResponse)
     def verify(
         hub_mode: str = Query("", alias="hub.mode"),
