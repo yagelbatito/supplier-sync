@@ -31,7 +31,20 @@ NEW_CATEGORIES = [
     ("הבדלה ומחלקי יין", "יודאיקה"),
     ("ברכות", "יודאיקה"),
     ("כיסוי לפלטה", "יודאיקה"),
+    ("ראש השנה", "יודאיקה"),        # round 2 (owner mapping tool)
 ]
+
+# ── SOURCE-CATEGORY fallback map (owner spec §4: applied AFTER all name rules) ──
+# Maps a whole Golyan source category → a store target, for products the name
+# rules above didn't catch. Extend this from the mapping tool's decisions.
+SOURCE_CATEGORY_MAP = {
+    "כוסות ומזיגה": "כוסות",
+    "קריסטלין": "כוסות",
+    "קריסטל בוהמיה": "כוסות",
+    "סטים פורצלן": "סט צלחות",
+    'סכו"ם': 'סכו"ם',
+    "מתנות לאירוח ולשולחן ראש השנה": "ראש השנה",
+}
 
 
 @dataclass
@@ -139,5 +152,11 @@ def map_product(name: str, source_cats: Optional[list] = None) -> MapResult:
     # ── 7. אמבטיה (source-category fallback) ──
     if ("אביזרי אמבטיה" in cats) or _has(n, "אביזרי אמבטיה"):
         return R("אביזרי אמבטיה", "source: אביזרי אמבטיה")
+
+    # ── 8. SOURCE-CATEGORY fallback (lowest priority; owner mapping tool) ──
+    for src_cat in cats:
+        target = SOURCE_CATEGORY_MAP.get(src_cat)
+        if target:
+            return R(target, f"source: {src_cat}")
 
     return MapResult(None, False, "")            # UNMAPPED
