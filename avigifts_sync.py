@@ -60,6 +60,20 @@ def _strip_supplier(text: str) -> str:
     return _re.sub(r"\s{2,}", " ", t).strip(" -–,|\"")
 
 
+def _clean_name(name: str) -> str:
+    """Strip the supplier's internal price/pack codes that prefix Avi Gifts
+    names (e.g. '10.8 60יח שעון קיר…' → 'שעון קיר…', '5.9סט אוכל' → 'סט אוכל').
+    Removes a leading decimal price code and a leading 'NNיח' pack token; keeps
+    real content. The OpenAI rewrite cleans the rest — this guards the fallback."""
+    if not name:
+        return name
+    n = name
+    for _ in range(3):
+        n = _re.sub(r"^\s*\d+[.,]\d+\s*", "", n)          # leading decimal price
+        n = _re.sub(r"^\s*\d+\s*יח['\"׳]?\s*", "", n)     # leading NNיח pack code
+    return n.strip(" -–,|\"")
+
+
 def _norm(n: str) -> str:
     return " ".join((n or "").split()).strip().lower()
 
@@ -199,7 +213,7 @@ def main():
             dup_name += 1
             continue
         available = p["in_stock"]
-        clean_name = _strip_supplier(p["name"])
+        clean_name = _clean_name(_strip_supplier(p["name"]))
         clean_desc = _strip_supplier(p["description"].replace(src_sku, "")) if p["description"] else ""
         cat_ids = cat_svc.resolve_list(p["_target"])
         ship = shipping_map.get(p["_target"], "")
