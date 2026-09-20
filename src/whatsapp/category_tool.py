@@ -69,7 +69,34 @@ def register_category_tool(app, orchestrator) -> None:
         cat_svc.load()
         skip = {"Sale", "SALE 70%", "70% הנחה", "New collection", "Spring", "Gift Card", "Cote Norie"}
         names = [n for n in cat_svc.category_names if n not in skip]
-        return {"categories": sorted(names)}
+        # top-level categories = possible parents for a new sub-category
+        tops = []
+        try:
+            allc = wc.get_all("products/categories")
+            tops = sorted(c["name"] for c in allc if not c.get("parent") and c["name"] not in skip)
+        except Exception as exc:
+            logger.warning(f"[cat-tool] parents fetch failed: {exc}")
+        return {"categories": sorted(names), "parents": tops}
+
+    @app.post("/api/cat/newcat")
+    async def new_category(request: Request):
+        """Create a new store category (optionally under a parent) and return its
+        name so the client can assign it to a product immediately."""
+        body = await request.json()
+        _check(str(body.get("key", "")))
+        name = str(body.get("name", "")).strip()
+        parent = str(body.get("parent", "")).strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="missing name")
+        cat_svc.load()
+        if cat_svc.resolve(name, fallback=""):
+            return {"ok": True, "name": name, "existed": True}
+        pid = cat_svc.resolve(parent, fallback="") if parent else 0
+        res = wc.post("products/categories", {"name": name, "parent": pid or 0})
+        if res.get("id"):
+            cat_svc._categories[name] = res["id"]      # warm the cache
+        logger.info(f"[cat-tool] created category '{name}' (parent '{parent or '—'}')")
+        return {"ok": True, "name": name, "id": res.get("id"), "existed": False}
 
     @app.get("/api/cat/products")
     def products(key: str = "", supplier: str = "", q: str = "", category: str = "",
@@ -131,6 +158,12 @@ li{background:var(--surf);border:1px solid var(--line);border-radius:12px;paddin
 .empty select{border-color:var(--warn)}
 .more{margin:18px auto 0;display:block;font:inherit;padding:11px 22px;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:10px;cursor:pointer}
 .load{text-align:center;color:var(--muted);padding:30px}
+.newbtn{font:inherit;padding:8px 12px;border:1px solid var(--accent);color:var(--accent);background:transparent;border-radius:9px;cursor:pointer}
+.newform{display:flex;gap:8px;flex-wrap:wrap;align-items:center;background:var(--surf);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-top:10px}
+.newform input,.newform select{flex:1 1 160px}
+.newform button{font:inherit;padding:8px 14px;border-radius:9px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+.newform button.ghost{background:transparent;color:var(--accent)}
+#ncmsg{font-size:.85rem;color:var(--muted)}
 </style></head><body><div class="wrap">
 <h1>ניהול קטגוריות</h1>
 <div class="sub">שנה קטגוריה בדרופדאון — היא נשמרת מיד באתר. הנקודה ליד המוצר: 🟡 שומר · 🟢 נשמר.</div>
@@ -139,7 +172,15 @@ li{background:var(--surf);border:1px solid var(--line);border-radius:12px;paddin
   <select id="sup"><option value="">כל הספקים</option></select>
   <select id="onlyempty"><option value="">הכל</option><option value="1">רק בלי קטגוריה / בדיקה ידנית</option></select>
   <select id="pagesize"><option value="60">60 בעמוד</option><option value="150">150 בעמוד</option><option value="400">400 בעמוד</option></select>
+  <button class="newbtn" id="newbtn" type="button">➕ קטגוריה חדשה</button>
   <span class="count" id="count"></span>
+</div>
+<div class="newform" id="newform" hidden>
+  <input type="text" id="ncname" placeholder="שם הקטגוריה החדשה">
+  <select id="ncparent"><option value="">ללא הורה (ראשית)</option></select>
+  <button id="nccreate" type="button">צור</button>
+  <button id="nccancel" type="button" class="ghost">ביטול</button>
+  <span id="ncmsg"></span>
 </div>
 <ul id="list"></ul>
 <div class="load" id="load" hidden>טוען…</div>
@@ -147,7 +188,7 @@ li{background:var(--surf);border:1px solid var(--line);border-radius:12px;paddin
 </div>
 <script>
 const KEY=new URLSearchParams(location.search).get("key")||"";
-let CATS=[], off=0, LIMIT=60, total=0, loading=false;
+let CATS=[], PARENTS=[], off=0, LIMIT=60, total=0, loading=false;
 function syncPageSize(){LIMIT=parseInt($("#pagesize").value)||60}
 const $=s=>document.querySelector(s);
 async function api(u){const r=await fetch(u);if(!r.ok)throw new Error(await r.text());return r.json()}
@@ -203,7 +244,35 @@ $("#q").addEventListener("input",debounced);
 $("#sup").addEventListener("change",()=>load(true));
 $("#onlyempty").addEventListener("change",()=>load(true));
 $("#pagesize").addEventListener("change",()=>{syncPageSize();load(true)});
+
+// ── add-new-category ──
+function fillParents(){
+  const sel=$("#ncparent");
+  sel.innerHTML='<option value="">ללא הורה (ראשית)</option>'+PARENTS.map(p=>`<option>${p}</option>`).join("");
+}
+$("#newbtn").addEventListener("click",()=>{const f=$("#newform");f.hidden=!f.hidden;if(!f.hidden){fillParents();$("#ncname").focus()}});
+$("#nccancel").addEventListener("click",()=>{$("#newform").hidden=true;$("#ncname").value="";$("#ncmsg").textContent=""});
+$("#nccreate").addEventListener("click",async()=>{
+  const name=$("#ncname").value.trim(); const parent=$("#ncparent").value;
+  if(!name){$("#ncmsg").textContent="הזן שם";return}
+  $("#nccreate").disabled=true;$("#ncmsg").textContent="יוצר…";
+  try{
+    const r=await fetch("/api/cat/newcat",{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({key:KEY,name,parent})});
+    if(!r.ok)throw new Error(await r.text());
+    if(!CATS.includes(name)){CATS.push(name);CATS.sort((a,b)=>a.localeCompare(b,"he"));}
+    // add the new option to every product dropdown already on screen
+    document.querySelectorAll('#list select').forEach(s=>{
+      if(![...s.options].some(o=>o.value===name)){
+        const o=document.createElement("option");o.textContent=name;o.value=name;s.appendChild(o);
+      }
+    });
+    $("#ncmsg").textContent="נוצר ✓ — בחר אותה בדרופדאון של המוצר";
+    $("#ncname").value="";
+  }catch(e){$("#ncmsg").textContent="נכשל: "+e.message}
+  $("#nccreate").disabled=false;
+});
 $("#more").addEventListener("click",()=>load(false));
-(async()=>{try{CATS=(await api("/api/cat/categories?key="+encodeURIComponent(KEY))).categories;await load(true)}
+(async()=>{try{const d=await api("/api/cat/categories?key="+encodeURIComponent(KEY));CATS=d.categories;PARENTS=d.parents||[];await load(true)}
 catch(e){$("#list").innerHTML='<li>שגיאת הרשאה — ודא שהקישור כולל ?key=…</li>'}})();
 </script></body></html>"""
