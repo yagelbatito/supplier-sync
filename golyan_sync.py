@@ -31,12 +31,15 @@ from src.core.constants import META_SYNC_MANAGED
 from src.core.utils import stable_sku
 from src.enrichment.openai_client import OpenAIClient
 from src.enrichment.product_content_generator import ProductContentGenerator
+from src.enrichment.product_classifier import ProductClassifier
 from src.models.product import SupplierProduct
 from src.woocommerce.client import WooCommerceClient
 from src.woocommerce.category_service import CategoryService
 from src.woocommerce.product_service import ProductService
 from src.suppliers.golyan_supplier import fetch_all
-from config.golyan_mapping import map_product, FURNITURE_TARGETS, NEW_CATEGORIES
+from config.golyan_mapping import FURNITURE_TARGETS, NEW_CATEGORIES, CLASSIFIER_HINTS
+
+REVIEW_FALLBACK_CAT = "בדיקה ידנית"    # where off-list products land (flagged for review)
 
 SUPPLIER_KEY = "julian"     # keep continuity with existing JUL-* products
 SKU_PREFIX = "JUL"
@@ -117,57 +120,100 @@ def main():
     print(f"unique SKUs: {len(by_sku)} | duplicate source SKUs: {len(dup_source)} | "
           f"no-SKU (unresolved): {len(unresolved)}", flush=True)
 
-    # ── 6-8. map + price ──
+    # ── build LEAF-category candidates from the LIVE store tree ──
+    raw_cats = get_all_resilient(c, "products/categories")
+    cat_by_id = {rc["id"]: rc for rc in raw_cats}
+    parent_ids = {rc.get("parent") for rc in raw_cats if rc.get("parent")}
+    leaves = [{"name": rc["name"],
+               "parent": (cat_by_id.get(rc.get("parent"), {}).get("name", "") if rc.get("parent") else "")}
+              for rc in raw_cats if rc["id"] not in parent_ids]
+
+    # ── 6-8. classify PER PRODUCT (by name) + price ──
+    ai = OpenAIClient(api_key=s.openai_api_key, model=s.openai_model)
+    clf = ProductClassifier(ai, leaves, hints=CLASSIFIER_HINTS)
+    print(f"classifying {len(by_sku)} products by name ({len(leaves)} leaf categories)…", flush=True)
+    cls = clf.classify([{"sku": sk, "name": pp["name"]} for sk, pp in by_sku.items()]) if clf.available else {}
+
     dist = collections.Counter()
-    unmapped = []
-    missing_target = collections.defaultdict(list)   # target -> [(sku,name)]
+    needs_review = []                                  # off-list → fallback category
+    new_suggest = collections.defaultdict(list)        # (new_name, parent) -> [(sku,name)]
+    low_conf = []
     price_samples = []
+    review_rows = []                                   # for the review artifact
     for sku, p in by_sku.items():
-        res = map_product(p["name"], p["source_cats"])
-        if not res.target:
-            unmapped.append(p); continue
-        dist[res.target] += 1
-        # target category must exist (or be one we will create)
-        if res.target not in store_cats and res.target not in new_leaves:
-            missing_target[res.target].append((sku, p["name"]))
-        p["_target"] = res.target
-        p["_furn"] = res.is_furniture
-        p["_price"] = price_for(p["price"], res.is_furniture)
+        r = cls.get(sku)
+        target = (r.category if r else "") or ""
+        review = False
+        if not target:                                 # off-list / no existing fit
+            target = REVIEW_FALLBACK_CAT
+            review = True
+            needs_review.append(p)
+        if r and r.is_new and r.new_name:
+            new_suggest[(r.new_name, r.parent or "")].append((sku, p["name"]))
+        is_furn = target in FURNITURE_TARGETS
+        dist[target] += 1
+        p["_target"] = target
+        p["_furn"] = is_furn
+        p["_price"] = price_for(p["price"], is_furn)
+        conf = (r.confidence if r else 0.0)
+        if not review and conf and conf < 0.55:
+            low_conf.append((sku, p["name"], target, conf))
         if len(price_samples) < 10:
             price_samples.append((p["name"][:30], p["price"], p["_price"],
-                                  "ריהוט −30%" if res.is_furniture else "אחר −25%"))
+                                  "ריהוט −30%" if is_furn else "אחר −25%"))
+        review_rows.append({"sku": sku, "name": p["name"], "target": target,
+                            "confidence": round(conf, 2), "review": review,
+                            "is_new": bool(r.is_new) if r else False,
+                            "new_name": (r.new_name if r else ""),
+                            "source_cats": p["source_cats"]})
+
+    # persist the classification for the review page / audit
+    try:
+        import json as _json
+        with open("golyan_classification.json", "w", encoding="utf-8") as _f:
+            _json.dump({"rows": review_rows,
+                        "new_suggestions": [{"new_name": nn, "parent": pr, "count": len(v),
+                                             "samples": [s for s, _ in v[:8]]}
+                                            for (nn, pr), v in sorted(new_suggest.items(), key=lambda kv: -len(kv[1]))]},
+                       _f, ensure_ascii=False)
+    except Exception as _exc:
+        print(f"  (could not write classification json: {_exc})", flush=True)
 
     # ═══════════════ REPORTS ═══════════════
-    print("\n── mapping distribution (target → count) ──", flush=True)
+    print("\n── category distribution (per-product classifier) ──", flush=True)
     for t, n in dist.most_common():
         flag = " [ריהוט]" if t in FURNITURE_TARGETS else ""
-        exists = "" if (t in store_cats or t in new_leaves) else "  ⚠️ קטגוריה לא קיימת בחנות"
-        print(f"  {n:4}  {t}{flag}{exists}", flush=True)
+        note = "  ⚠️ בדיקה ידנית" if t == REVIEW_FALLBACK_CAT else ""
+        print(f"  {n:4}  {t}{flag}{note}", flush=True)
 
     print("\n── price samples (source → store) ──", flush=True)
     for name, src, new, tag in price_samples:
         print(f"  {name:<30} {src:>7.0f} → {new:>6}  ({tag})", flush=True)
 
-    print(f"\n── UNMAPPED_PRODUCTS: {len(unmapped)} ──", flush=True)
-    for p in unmapped[:25]:
-        print(f"  [{p['sku']}] {p['name'][:40]}  « {', '.join(p['source_cats'][:2])}", flush=True)
-    if len(unmapped) > 25:
-        print(f"  … +{len(unmapped) - 25} more", flush=True)
+    print(f"\n── NEEDS_REVIEW (no confident existing category → '{REVIEW_FALLBACK_CAT}'): {len(needs_review)} ──", flush=True)
+    for p in needs_review[:20]:
+        print(f"  [{p['sku']}] {p['name'][:44]}  « {', '.join(p['source_cats'][:2])}", flush=True)
+    if len(needs_review) > 20:
+        print(f"  … +{len(needs_review) - 20} more", flush=True)
 
-    print(f"\n── HIDDEN_OR_MISSING_FRONTEND_CATEGORIES: {len(missing_target)} ──", flush=True)
-    for t, items in missing_target.items():
-        will = " (מיועד ליצירה)" if t in new_leaves else " (לא ברשימת היצירה — דיווח בלבד)"
-        print(f"  '{t}': {len(items)} מוצרים{will}  דוגמאות: {[s for s,_ in items[:3]]}", flush=True)
+    print(f"\n── NEW_CATEGORY_SUGGESTIONS (model proposed a new leaf): {len(new_suggest)} ──", flush=True)
+    for (nn, pr), items in sorted(new_suggest.items(), key=lambda kv: -len(kv[1]))[:15]:
+        print(f"  '{nn}' תחת '{pr}': {len(items)} מוצרים  דוגמאות: {[s for s,_ in items[:3]]}", flush=True)
+
+    print(f"\n── LOW_CONFIDENCE (<0.55): {len(low_conf)} ──", flush=True)
+    for sku, name, target, conf in low_conf[:15]:
+        print(f"  [{sku}] {name[:38]} → {target} ({conf:.2f})", flush=True)
 
     if dup_source:
         print(f"\n── duplicate source SKUs: {len(dup_source)} ──", flush=True)
         for sku, n in list(dup_source.items())[:10]:
             print(f"  {sku} ×{n+1}", flush=True)
 
+    mapped_ok = sum(dist.values()) - len(needs_review)
     print(f"\n=== SUMMARY ===", flush=True)
-    print(f"  fetched={len(products)} unique={len(by_sku)} mapped={sum(dist.values())} "
-          f"unmapped={len(unmapped)} dup-source={len(dup_source)} "
-          f"missing-cats={len(missing_target)} ({'APPLIED' if APPLY else 'DRY-RUN'})", flush=True)
+    print(f"  fetched={len(products)} unique={len(by_sku)} classified={mapped_ok} "
+          f"needs-review={len(needs_review)} new-suggested={len(new_suggest)} "
+          f"low-conf={len(low_conf)} dup-source={len(dup_source)} ({'APPLIED' if APPLY else 'DRY-RUN'})", flush=True)
 
     if not APPLY:
         print("\n(DRY-RUN — no writes. Review the reports above, then run --apply.)", flush=True)
