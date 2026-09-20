@@ -138,6 +138,7 @@ li{background:var(--surf);border:1px solid var(--line);border-radius:12px;paddin
   <input type="search" id="q" placeholder="חיפוש לפי שם מוצר…">
   <select id="sup"><option value="">כל הספקים</option></select>
   <select id="onlyempty"><option value="">הכל</option><option value="1">רק בלי קטגוריה / בדיקה ידנית</option></select>
+  <select id="pagesize"><option value="60">60 בעמוד</option><option value="150">150 בעמוד</option><option value="400">400 בעמוד</option></select>
   <span class="count" id="count"></span>
 </div>
 <ul id="list"></ul>
@@ -147,6 +148,7 @@ li{background:var(--surf);border:1px solid var(--line);border-radius:12px;paddin
 <script>
 const KEY=new URLSearchParams(location.search).get("key")||"";
 let CATS=[], off=0, LIMIT=60, total=0, loading=false;
+function syncPageSize(){LIMIT=parseInt($("#pagesize").value)||60}
 const $=s=>document.querySelector(s);
 async function api(u){const r=await fetch(u);if(!r.ok)throw new Error(await r.text());return r.json()}
 function optionsHtml(cur){
@@ -200,6 +202,7 @@ let t;function debounced(){clearTimeout(t);t=setTimeout(()=>load(true),350)}
 $("#q").addEventListener("input",debounced);
 $("#sup").addEventListener("change",()=>load(true));
 $("#onlyempty").addEventListener("change",()=>load(true));
+$("#pagesize").addEventListener("change",()=>{syncPageSize();load(true)});
 $("#more").addEventListener("click",()=>load(false));
 (async()=>{try{CATS=(await api("/api/cat/categories?key="+encodeURIComponent(KEY))).categories;await load(true)}
 catch(e){$("#list").innerHTML='<li>שגיאת הרשאה — ודא שהקישור כולל ?key=…</li>'}})();
