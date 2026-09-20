@@ -18,7 +18,7 @@ import re
 import time
 from typing import Optional
 
-import httpx
+import requests
 
 from src.core.logger import get_logger
 
@@ -69,10 +69,12 @@ def fetch_all(per_page: int = 100, max_pages: int = 0, delay: float = 0.3) -> li
     """Fetch every product from the Golyan Store API (paginated)."""
     out: list[dict] = []
     page = 1
-    with httpx.Client(timeout=40, headers={"Accept": "application/json", "User-Agent": UA}) as h:
+    with requests.Session() as h:
+        h.headers.update({"Accept": "application/json", "User-Agent": UA})
         while True:
             try:
-                r = h.get(STORE_API, params={"per_page": per_page, "page": page})
+                r = h.get(STORE_API, params={"per_page": per_page, "page": page},
+                          timeout=40, verify=False)
                 if r.status_code == 400:      # WooCommerce returns 400 past the last page
                     break
                 r.raise_for_status()
