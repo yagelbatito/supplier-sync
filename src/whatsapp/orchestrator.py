@@ -711,6 +711,7 @@ class WhatsAppOrchestrator:
                 result = self.product_svc.create(
                     product, category_ids, images_payload,
                     shipping_class=shipping_class,
+                    force_new_collection=True,   # bot uploads are new arrivals → New collection now
                 )
                 wc_id = result.get("id")
                 action = "created"

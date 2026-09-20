@@ -65,13 +65,16 @@ class ProductService:
         self._new_col_id = 0
         return None
 
-    def _with_new_collection(self, category_ids: list) -> list:
-        """Append the 'New collection' category to NEW products, but only from
-        NEW_COLLECTION_SINCE onward (keeps the bulk migration out of it)."""
-        if not NEW_COLLECTION_SINCE:
-            return category_ids
-        if _dt.date.today().isoformat() < NEW_COLLECTION_SINCE:
-            return category_ids
+    def _with_new_collection(self, category_ids: list, force: bool = False) -> list:
+        """Append the 'New collection' category to NEW products. Supplier syncs
+        gate it on NEW_COLLECTION_SINCE (keeps the bulk migration out of it);
+        `force=True` (WhatsApp bot uploads — genuine manual new arrivals) adds it
+        immediately, regardless of the date."""
+        if not force:
+            if not NEW_COLLECTION_SINCE:
+                return category_ids
+            if _dt.date.today().isoformat() < NEW_COLLECTION_SINCE:
+                return category_ids
         ncid = self._new_collection_id()
         if ncid and ncid not in category_ids:
             return list(category_ids) + [ncid]
@@ -133,8 +136,10 @@ class ProductService:
         # This is a known limitation; the SKU is the primary key.
         return None
 
-    def create(self, product: SupplierProduct, category_ids: list[int], images_payload: list[dict], shipping_class: str = "") -> dict:
-        category_ids = self._with_new_collection(category_ids)   # new arrivals → also "New collection"
+    def create(self, product: SupplierProduct, category_ids: list[int], images_payload: list[dict], shipping_class: str = "", force_new_collection: bool = False) -> dict:
+        # New arrivals → also "New collection" (supplier syncs date-gated; bot
+        # uploads force it immediately).
+        category_ids = self._with_new_collection(category_ids, force=force_new_collection)
         payload = self._build_payload(product, category_ids, images_payload, shipping_class=shipping_class, is_new=True)
         result = self._client.post("products", payload)
         logger.info(f"Created WC product ID={result.get('id')} SKU={product.sku}")
