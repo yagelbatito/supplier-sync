@@ -205,6 +205,11 @@ class ProductService:
             payload.pop("name", None)
             payload.pop("description", None)
             payload.pop("short_description", None)
+        # Never clear existing images with a blank list — an update that passes
+        # no images should leave the product's images untouched (and skips the
+        # slow WC image side-load).
+        if not images_payload:
+            payload.pop("images", None)
         return payload
 
     def _build_meta(self, product: SupplierProduct) -> list[dict]:

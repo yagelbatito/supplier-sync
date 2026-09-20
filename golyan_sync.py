@@ -268,27 +268,32 @@ def main():
             status="publish" if available else "draft",
         )
         prod.calculated_price = p["_price"]
-        # OpenAI rewrite (adds best-price / physical-store / phone footer)
-        if content_gen.available:
-            try:
-                content_gen.enrich(prod)
-            except Exception as exc:
-                print(f"   enrich fail [{sku}]: {str(exc)[:60]}", flush=True)
-        # scrub any supplier mention the model may have echoed; force name/desc
-        # to (re)upload on update (ai_generated); SKU stays only in the sku field
-        prod.improved_name = _strip_supplier(prod.improved_name) or clean_name
-        prod.full_description = _strip_supplier(prod.full_description)
-        prod.ai_generated = True
-        images_payload = [{"src": u} for u in p["images"]]
-        if not images_payload:
-            prod.mark_for_review("No image from Golyan"); no_image += 1
         cat_ids = cat_svc.resolve_list(p["_target"])
         ship = shipping_map.get(p["_target"], "")
         try:
             if existing:
-                product_svc.update(existing["id"], prod, cat_ids, images_payload, shipping_class=ship)
+                # FAST path: product already on the site → only fix
+                # category/price/shipping/stock. Keep its existing (already
+                # enriched) name/description (ai_generated=False) and don't
+                # re-send images (avoids the slow OpenAI + image side-load), so
+                # a continuation run flies through what's already uploaded.
+                prod.ai_generated = False
+                product_svc.update(existing["id"], prod, cat_ids, [], shipping_class=ship)
                 updated += 1
             else:
+                # NEW product → full treatment: OpenAI rewrite (+ best-price /
+                # physical-store / phone footer), scrub supplier name, images.
+                if content_gen.available:
+                    try:
+                        content_gen.enrich(prod)
+                    except Exception as exc:
+                        print(f"   enrich fail [{sku}]: {str(exc)[:60]}", flush=True)
+                prod.improved_name = _strip_supplier(prod.improved_name) or clean_name
+                prod.full_description = _strip_supplier(prod.full_description)
+                prod.ai_generated = True
+                images_payload = [{"src": u} for u in p["images"]]
+                if not images_payload:
+                    prod.mark_for_review("No image from Golyan"); no_image += 1
                 product_svc.create(prod, cat_ids, images_payload, shipping_class=ship)
                 existing_names.add(_norm(p["name"])); created += 1
             if (created + updated) % 50 == 0:
