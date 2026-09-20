@@ -2,6 +2,8 @@
 WooCommerce product CRUD operations.
 All product-level interactions go through this service.
 """
+import datetime as _dt
+import os
 from typing import Optional
 
 from src.core.constants import (
@@ -31,12 +33,49 @@ from src.woocommerce.client import WooCommerceClient
 
 logger = get_logger(__name__)
 
+# Every NEW product created on/after this date is ALSO added to the store's
+# "New collection" category (in addition to its own category) — so shoppers see
+# genuinely new arrivals there. Set to a date AFTER the initial bulk migration
+# so the migration itself doesn't flood the collection. Override with the
+# NEW_COLLECTION_SINCE env var (YYYY-MM-DD); empty disables the feature.
+NEW_COLLECTION_SINCE = os.getenv("NEW_COLLECTION_SINCE", "2026-09-27")
+NEW_COLLECTION_NAME = "New collection"
+
 
 class ProductService:
     def __init__(self, client: WooCommerceClient):
         self._client = client
         self._sku_cache: dict[str, dict] = {}   # SKU → WC product dict
         self._meta_cache: dict[str, dict] = {}  # meta value → WC product dict
+        self._new_col_id: Optional[int] = None  # lazy "New collection" category id
+
+    def _new_collection_id(self) -> Optional[int]:
+        """Resolve (and cache) the 'New collection' category id, or None."""
+        if self._new_col_id is not None:
+            return self._new_col_id or None
+        try:
+            res = self._client.get("products/categories",
+                                   params={"search": NEW_COLLECTION_NAME, "per_page": 20})
+            for c in res:
+                if c.get("name") == NEW_COLLECTION_NAME:
+                    self._new_col_id = c["id"]
+                    return self._new_col_id
+        except Exception as exc:
+            logger.warning(f"New-collection lookup failed: {exc}")
+        self._new_col_id = 0
+        return None
+
+    def _with_new_collection(self, category_ids: list) -> list:
+        """Append the 'New collection' category to NEW products, but only from
+        NEW_COLLECTION_SINCE onward (keeps the bulk migration out of it)."""
+        if not NEW_COLLECTION_SINCE:
+            return category_ids
+        if _dt.date.today().isoformat() < NEW_COLLECTION_SINCE:
+            return category_ids
+        ncid = self._new_collection_id()
+        if ncid and ncid not in category_ids:
+            return list(category_ids) + [ncid]
+        return category_ids
 
     def preload_managed_products(self, supplier_key: str) -> list[dict]:
         """
@@ -95,6 +134,7 @@ class ProductService:
         return None
 
     def create(self, product: SupplierProduct, category_ids: list[int], images_payload: list[dict], shipping_class: str = "") -> dict:
+        category_ids = self._with_new_collection(category_ids)   # new arrivals → also "New collection"
         payload = self._build_payload(product, category_ids, images_payload, shipping_class=shipping_class, is_new=True)
         result = self._client.post("products", payload)
         logger.info(f"Created WC product ID={result.get('id')} SKU={product.sku}")
