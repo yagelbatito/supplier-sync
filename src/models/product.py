@@ -59,6 +59,11 @@ class SupplierProduct:
     manual_review_reason: str = ""
     status: str = "publish"      # "publish" | "draft"
 
+    # ── Extra WooCommerce meta (key → value), merged into the product's
+    #    meta_data on create/update. Used e.g. for per-product minimum order
+    #    quantity (_min_order_qty). ──
+    extra_meta: dict = field(default_factory=dict)
+
     def display_name(self) -> str:
         return self.improved_name or self.name
 

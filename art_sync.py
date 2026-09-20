@@ -122,7 +122,8 @@ def main():
 
     # dedup (already deduped in fetch_all, but keep the reporting parity)
     by_sku = {p["sku"]: p for p in products if p["sku"]}
-    print(f"unique SKUs: {len(by_sku)}", flush=True)
+    n_min = sum(1 for p in by_sku.values() if (p.get("min_order", 0) or 0) > 1)
+    print(f"unique SKUs: {len(by_sku)} | with supplier minimum/pack (→ store min 50%): {n_min}", flush=True)
 
     # leaf categories from the live store tree
     raw_cats = get_all_resilient(c, "products/categories")
@@ -231,6 +232,13 @@ def main():
             status="publish",
         )
         prod.calculated_price = p["_price"]
+        # Minimum order quantity: if ART only sells this in a pack / imposes a
+        # minimum, the owner wants a store minimum of 50% of it (floor), so a
+        # supplier pack of 25 → store minimum 12. Enforced on the storefront by
+        # the _min_order_qty meta + a Code-Snippets PHP hook (see art_min_qty snippet).
+        min_order = p.get("min_order", 0) or 0
+        if min_order > 1:
+            prod.extra_meta["_min_order_qty"] = max(1, int(min_order // 2))
         try:
             if existing:
                 # FAST path — only fix category/price/shipping; keep existing

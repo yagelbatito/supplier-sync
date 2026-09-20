@@ -115,6 +115,10 @@ def _normalize(sku: str, raw: dict) -> Optional[dict]:
         price = 0.0
     img_file = (raw.get("image") or "").strip()
     image_url = f"{IMAGE_DIR}{img_file}" if img_file else ""
+    try:
+        min_order = int(float(raw.get("min_order") or 0))
+    except (TypeError, ValueError):
+        min_order = 0
     return {
         "sku": sku,
         "code": str(raw.get("product_code") or sku),
@@ -123,6 +127,7 @@ def _normalize(sku: str, raw: dict) -> Optional[dict]:
         "product_code": str(raw.get("product_code") or ""),
         "image_url": image_url,
         "images": [image_url] if image_url else [],
+        "min_order": min_order,               # supplier's minimum/pack quantity (0/1 = none)
         "in_stock": True,                     # API has no clear stock flag; treat as available
     }
 

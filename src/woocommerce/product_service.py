@@ -231,4 +231,8 @@ class ProductService:
         if product.seo_meta_description:
             meta.append({"key": META_YOAST_DESC, "value": product.seo_meta_description})
 
+        # Extra per-product meta (e.g. _min_order_qty) — set by the supplier sync.
+        for k, v in (getattr(product, "extra_meta", None) or {}).items():
+            meta.append({"key": k, "value": str(v)})
+
         return meta
