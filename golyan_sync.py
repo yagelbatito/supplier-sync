@@ -24,9 +24,13 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", write_through
 import warnings; warnings.filterwarnings("ignore")
 from dotenv import load_dotenv; load_dotenv()
 
+import re as _re
+
 from src.core.config_loader import load_app_settings, load_shipping_class_mapping
 from src.core.constants import META_SYNC_MANAGED
 from src.core.utils import stable_sku
+from src.enrichment.openai_client import OpenAIClient
+from src.enrichment.product_content_generator import ProductContentGenerator
 from src.models.product import SupplierProduct
 from src.woocommerce.client import WooCommerceClient
 from src.woocommerce.category_service import CategoryService
@@ -36,6 +40,16 @@ from config.golyan_mapping import map_product, FURNITURE_TARGETS, NEW_CATEGORIES
 
 SUPPLIER_KEY = "julian"     # keep continuity with existing JUL-* products
 SKU_PREFIX = "JUL"
+
+# Never reveal the supplier in customer-facing text.
+_SUPPLIER_WORDS = _re.compile(r"גולי[איי]?ן|גולין|golyangifts|golyan|golaino", _re.IGNORECASE)
+
+
+def _strip_supplier(text: str) -> str:
+    if not text:
+        return text
+    t = _SUPPLIER_WORDS.sub("", text)
+    return _re.sub(r"\s{2,}", " ", t).strip(" -–,|")
 
 
 def _norm(n: str) -> str:
@@ -162,6 +176,7 @@ def main():
     # ═══════════════ APPLY ═══════════════
     product_svc = ProductService(c)
     shipping_map = load_shipping_class_mapping()
+    content_gen = ProductContentGenerator(OpenAIClient(api_key=s.openai_api_key, model=s.openai_model))
 
     # create the missing sub-categories (spec §7)
     for leaf, parent in NEW_CATEGORIES:
@@ -195,15 +210,29 @@ def main():
             dup_name += 1
             continue
         available = p["in_stock"]
+        # scrub supplier name + the source code out of the customer-facing text
+        clean_name = _strip_supplier(p["name"])
+        clean_desc = _strip_supplier(p["description"].replace(src_sku, "")) if p["description"] else ""
         prod = SupplierProduct(
             supplier_name="Golyan", supplier_key=SUPPLIER_KEY, supplier_product_id=src_sku,
-            supplier_url="", sku=sku, name=p["name"], original_description=p["description"],
+            supplier_url="", sku=sku, name=clean_name, original_description=clean_desc,
             price=p["price"], stock_status="instock" if available else "outofstock",
             is_available=available, supplier_category=", ".join(p["source_cats"]),
             mapped_category=p["_target"], images=p["images"],
             status="publish" if available else "draft",
         )
         prod.calculated_price = p["_price"]
+        # OpenAI rewrite (adds best-price / physical-store / phone footer)
+        if content_gen.available:
+            try:
+                content_gen.enrich(prod)
+            except Exception as exc:
+                print(f"   enrich fail [{sku}]: {str(exc)[:60]}", flush=True)
+        # scrub any supplier mention the model may have echoed; force name/desc
+        # to (re)upload on update (ai_generated); SKU stays only in the sku field
+        prod.improved_name = _strip_supplier(prod.improved_name) or clean_name
+        prod.full_description = _strip_supplier(prod.full_description)
+        prod.ai_generated = True
         images_payload = [{"src": u} for u in p["images"]]
         if not images_payload:
             prod.mark_for_review("No image from Golyan"); no_image += 1
