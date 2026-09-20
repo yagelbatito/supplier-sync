@@ -58,7 +58,8 @@ def login(user: str, password: str, attempts: int = 3) -> Optional[requests.Sess
             m = re.search(r'<form[^>]*btl-formlogin.*?</form>', r.text, re.S)
             if not m:
                 logger.error("ART login form not found")
-                time.sleep(3); continue
+                time.sleep(3)
+                continue
             fields = {}
             for inp in re.findall(r'<input[^>]*>', m.group(0)):
                 n = re.search(r'name="([^"]+)"', inp)

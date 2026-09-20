@@ -24,8 +24,8 @@ from datetime import datetime
 from typing import Optional
 
 from src.core.logger import get_logger
-from src.whatsapp.conversation_log import log_message
 from src.whatsapp import bot_settings
+from src.whatsapp.conversation_log import log_message
 
 logger = get_logger(__name__)
 

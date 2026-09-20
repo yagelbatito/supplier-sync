@@ -16,7 +16,7 @@ owner hints, then call `classify(products)`.
     # -> {sku: ClassResult(category, is_new, parent, confidence, reason)}
 """
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from src.core.logger import get_logger
