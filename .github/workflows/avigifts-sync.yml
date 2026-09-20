@@ -1,0 +1,52 @@
+name: Avi Gifts Weekly Sync
+
+# Avi Gifts (avigifts.co.il) is a public WooCommerce store — its Store API is
+# open, so no login is needed. avigifts_sync.py fetches every product, classifies
+# each by name into the closest existing store category, prices at the site
+# price ×1.8, and upserts by SKU. Runs in the cloud.
+on:
+  schedule:
+    - cron: "0 5 * * 3"   # Wednesday 05:00 UTC — its own slot
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max products (empty = all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: avigifts-sync
+  cancel-in-progress: false
+
+jobs:
+  avigifts:
+    name: Sync Avi Gifts (Store API → classify → ×1.8 → upsert)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Avi Gifts sync
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: "gpt-4o-mini"
+          VERIFY_SSL: "false"
+          LOG_LEVEL: "INFO"
+        run: |
+          LIM="${{ github.event.inputs.limit }}"
+          if [ -n "$LIM" ]; then
+            python -u avigifts_sync.py --apply --limit "$LIM"
+          else
+            python -u avigifts_sync.py --apply
+          fi
