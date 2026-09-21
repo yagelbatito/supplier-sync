@@ -21,6 +21,7 @@ Env: MAILCHIMP_API_KEY, plus the usual WOOCOMMERCE_*/WP_*.
 import datetime as dt
 import html as _html
 import os
+import re
 import sys
 import warnings
 
@@ -39,8 +40,13 @@ MAX_PRODUCTS = 16
 COUPON_CODE = "NEW10"
 COUPON_PCT = 10
 SALES_EMAIL_SINCE = os.getenv("SALES_EMAIL_SINCE", "2026-09-27")   # don't blast during migration
-SUBJECT = "חדש בגלריה לעיצוב הבית 🎁 ועוד 10% הנחה מיוחדת"
+SUBJECT = "חדש בגלריה לעיצוב הבית — ועוד 10% הנחה מיוחדת"
 PREHEADER = "המוצרים החדשים שהגיעו השבוע — עם קוד להנחה נוספת של 10%"
+
+# Store / brand details for the email (matches the owner's preferred design).
+LOGO_URL = "https://mcusercontent.com/a28620ed60ea09878bfbe5e5b/images/6d151d1e-a1f0-5508-2201-c4fc81f4315b.png"
+STORE_PHONE = "053-3221955"
+STORE_ADDR = "כוכב הצפון 8, אשדוד"
 
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
@@ -74,8 +80,12 @@ def fetch_new_products(c):
         price = p.get("price") or p.get("regular_price") or ""
         if not price:
             continue
+        desc = re.sub(r"<[^>]+>", " ", p.get("short_description") or "")
+        desc = re.sub(r"\s+", " ", desc).strip()
+        if len(desc) > 130:
+            desc = desc[:127].rstrip() + "…"
         out.append({"id": p["id"], "name": p.get("name", ""), "price": price,
-                    "url": p.get("permalink", ""), "image": img})
+                    "url": p.get("permalink", ""), "image": img, "desc": desc})
     return out
 
 
@@ -96,59 +106,96 @@ def ensure_coupon(c, product_ids):
 
 
 def build_html(products):
+    """Editorial layout the owner preferred: cream ground, dark header + footer,
+    gold accents, serif headings; single-column full-width product cards."""
     cards = []
     for p in products:
         img = _html.escape(p["image"])
         name = _html.escape(p["name"])
         url = _html.escape(p["url"])
         price = _money(p["price"])
+        desc = _html.escape(p.get("desc") or "")
+        desc_row = (f'<tr><td align="right" style="font-family:Arial,\'Helvetica Neue\',sans-serif;'
+                    f'font-size:16px;line-height:25px;color:#5F5A50;padding:0 0 16px 0;">{desc}</td></tr>') if desc else ""
         cards.append(f"""
-        <td valign="top" width="50%" style="padding:8px;">
-          <table cellpadding="0" cellspacing="0" width="100%" style="border:1px solid #e7ddd9;border-radius:12px;overflow:hidden;background:#fffdfa;">
-            <tr><td><a href="{url}"><img src="{img}" width="100%" style="display:block;max-width:100%;height:auto;" alt="{name}"></a></td></tr>
-            <tr><td style="padding:12px 14px;font-family:Arial,sans-serif;">
-              <div style="font-size:15px;font-weight:bold;color:#211b22;line-height:1.4;min-height:42px;">{name}</div>
-              <div style="font-size:17px;color:#7a3d63;font-weight:bold;margin:8px 0;">{price}</div>
-              <a href="{url}" style="display:inline-block;background:#7a3d63;color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;padding:9px 20px;border-radius:8px;">לצפייה ורכישה</a>
+    <tr><td style="padding:0 18px 24px 18px;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FFFDF9;border:1px solid #E1D6C2;border-collapse:separate;border-radius:8px;overflow:hidden;">
+        <tr><td>
+          <a href="{url}" target="_blank" style="text-decoration:none;">
+            <img src="{img}" width="562" alt="{name}" style="display:block;width:100%;max-width:562px;height:auto;border:0;outline:none;text-decoration:none;">
+          </a>
+        </td></tr>
+        <tr><td align="right" dir="rtl" style="padding:22px 24px 24px 24px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+            <tr><td align="right" style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:24px;line-height:32px;font-weight:bold;color:#3E3A33;padding:0 0 8px 0;">{name}</td></tr>
+            {desc_row}
+            <tr><td align="right" style="font-family:Georgia,'Times New Roman',serif;font-size:30px;line-height:36px;font-weight:bold;color:#A9812F;padding:0 0 18px 0;">{price}</td></tr>
+            <tr><td align="right">
+              <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="right"><tr><td bgcolor="#3E3A33" style="border-radius:4px;">
+                <a href="{url}" target="_blank" style="display:inline-block;font-family:Arial,'Helvetica Neue',sans-serif;font-size:16px;line-height:20px;font-weight:bold;color:#FFFDF9;text-decoration:none;padding:13px 24px;border:1px solid #3E3A33;border-radius:4px;">לצפייה במוצר ←</a>
+              </td></tr></table>
             </td></tr>
           </table>
-        </td>""")
-    # pair cards into rows of 2
-    rows = []
-    for i in range(0, len(cards), 2):
-        rows.append("<tr>" + "".join(cards[i:i + 2]) + "</tr>")
-    grid = "\n".join(rows)
+        </td></tr>
+      </table>
+    </td></tr>""")
+    grid = "\n".join(cards)
 
-    return f"""<!doctype html><html lang="he" dir="rtl"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;background:#f4f0eb;">
-<span style="display:none;visibility:hidden;opacity:0;height:0;width:0;">{_html.escape(PREHEADER)}</span>
-<table cellpadding="0" cellspacing="0" width="100%" style="background:#f4f0eb;padding:0;">
- <tr><td align="center" style="padding:22px 12px;">
-  <table cellpadding="0" cellspacing="0" width="600" style="max-width:600px;width:100%;">
-   <tr><td align="center" style="font-family:Arial,sans-serif;padding:6px 0 4px;">
-     <div style="font-size:13px;letter-spacing:2px;color:#7a3d63;font-weight:bold;">הגלריה לעיצוב הבית · סמדר בטיטו</div>
-     <div style="font-size:26px;font-weight:bold;color:#211b22;margin:6px 0;">חדש אצלנו השבוע ✨</div>
-     <div style="font-size:15px;color:#6b6169;">בחרנו בשבילכם את המוצרים החדשים שהגיעו — ובלעדית לכם, עוד הנחה.</div>
-   </td></tr>
-   <tr><td style="padding:14px 6px;">
-     <table cellpadding="0" cellspacing="0" width="100%" style="background:#7a3d63;border-radius:12px;">
-       <tr><td align="center" style="font-family:Arial,sans-serif;padding:16px;color:#fff;">
-         <div style="font-size:15px;">קוד קופון ל־10% הנחה נוספת על המוצרים החדשים:</div>
-         <div style="font-size:26px;font-weight:bold;letter-spacing:3px;margin:8px 0;background:#fff;color:#7a3d63;display:inline-block;padding:8px 24px;border-radius:8px;">{COUPON_CODE}</div>
-         <div style="font-size:12px;opacity:.85;">הזינו את הקוד בעגלה. בתוקף לזמן מוגבל.</div>
-       </td></tr>
-     </table>
-   </td></tr>
-   <tr><td><table cellpadding="0" cellspacing="0" width="100%">{grid}</table></td></tr>
-   <tr><td align="center" style="font-family:Arial,sans-serif;padding:20px 12px;color:#6b6169;font-size:13px;line-height:1.7;">
-     החנות הפיזית: כוכב הצפון 8, אשדוד · וואטסאפ/טלפון: 050-5766659<br>
-     משלוחים לכל הארץ · <a href="https://smadarbetitohome.co.il" style="color:#7a3d63;">לאתר המלא</a>
-     <div style="margin-top:12px;font-size:11px;color:#9a9098;">*|UNSUB|* מהדיוור</div>
-   </td></tr>
-  </table>
- </td></tr>
-</table></body></html>"""
+    return f"""<!doctype html><html lang="he" dir="rtl"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<style type="text/css">
+  body{{margin:0!important;padding:0!important;background:#F6F3EC!important;}}
+  table{{border-spacing:0;}} img{{border:0;}}
+  @media only screen and (max-width:620px){{
+    .email-container{{width:100%!important;max-width:100%!important;}}
+    .mobile-pad{{padding-left:16px!important;padding-right:16px!important;}}
+    .hero-title{{font-size:32px!important;line-height:40px!important;}}
+  }}
+</style></head>
+<body dir="rtl" style="margin:0;padding:0;background:#F6F3EC;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">{_html.escape(PREHEADER)}</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#F6F3EC">
+<tr><td align="center">
+<table role="presentation" width="600" class="email-container" cellspacing="0" cellpadding="0" border="0" style="width:600px;max-width:600px;margin:0 auto;background:#F6F3EC;">
+
+  <tr><td align="center" bgcolor="#3E3A33" style="padding:12px 20px;font-family:Arial,sans-serif;font-size:14px;line-height:20px;color:#EAD9B8;font-weight:bold;">✨ חדש במלאי · אספקה מיידית</td></tr>
+
+  <tr><td align="center" bgcolor="#3E3A33" class="mobile-pad" style="padding:38px 28px 44px 28px;">
+    <img src="{LOGO_URL}" width="110" alt="סמדר בטיטו" style="display:block;width:110px;max-width:110px;height:auto;margin:0 auto 20px auto;">
+    <div class="hero-title" dir="rtl" style="font-family:Georgia,'Times New Roman',serif;font-size:42px;line-height:50px;font-weight:bold;color:#FFFDF9;text-align:center;">חדש אצלנו השבוע</div>
+    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:18px;line-height:28px;color:#D8CCBB;text-align:center;padding-top:14px;">בחרנו עבורכם את המוצרים החדשים שהגיעו — ובלעדית לכם, עוד הנחה.</div>
+  </td></tr>
+
+  <tr><td style="padding:24px 18px 8px 18px;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FFFDF9;border:2px solid #A9812F;border-radius:8px;">
+      <tr><td align="center" dir="rtl" style="padding:20px 18px;font-family:Arial,sans-serif;">
+        <div style="font-size:15px;color:#5F5A50;">קוד קופון ל־10% הנחה נוספת על המוצרים החדשים:</div>
+        <div style="font-family:Georgia,'Times New Roman',serif;font-size:30px;font-weight:bold;letter-spacing:4px;color:#A9812F;margin:8px 0;">{COUPON_CODE}</div>
+        <div style="font-size:12px;color:#8A7F72;">הזינו את הקוד בעגלה · בתוקף לזמן מוגבל, בכפוף למלאי</div>
+      </td></tr>
+    </table>
+  </td></tr>
+
+  <tr><td align="center" style="padding:26px 20px 20px 20px;">
+    <div dir="rtl" style="font-family:Arial,sans-serif;font-size:13px;line-height:20px;color:#767E5E;font-weight:bold;letter-spacing:1px;">חדש בקולקציה</div>
+    <div dir="rtl" style="font-family:Georgia,'Times New Roman',serif;font-size:30px;line-height:38px;color:#3E3A33;font-weight:bold;padding-top:6px;">הפריטים שבחרנו במיוחד עבורכם</div>
+  </td></tr>
+{grid}
+  <tr><td align="center" bgcolor="#767E5E" dir="rtl" style="padding:38px 24px;font-family:Arial,sans-serif;color:#FFFDF9;">
+    <div style="font-size:27px;line-height:35px;font-weight:bold;padding-bottom:10px;">אל תפספסו — המלאי מתחדש כל שבוע</div>
+    <div style="font-size:16px;line-height:25px;">נשמח לעזור לכם לבחור את הפריט המתאים לבית.</div>
+  </td></tr>
+
+  <tr><td align="center" bgcolor="#3E3A33" dir="rtl" style="padding:34px 24px;color:#D8CCBB;font-family:Arial,sans-serif;">
+    <img src="{LOGO_URL}" width="82" alt="סמדר בטיטו" style="display:block;width:82px;max-width:82px;height:auto;margin:0 auto 14px auto;">
+    <div style="font-family:Georgia,'Times New Roman',serif;font-size:24px;line-height:30px;font-weight:bold;color:#E8C97A;">הגלריה לעיצוב הבית — סמדר בטיטו</div>
+    <div style="font-size:15px;line-height:24px;padding-top:10px;">{STORE_ADDR} &nbsp;|&nbsp; {STORE_PHONE}</div>
+    <div style="font-size:13px;line-height:20px;color:#AFA38F;padding-top:18px;">המחירים והמבצעים כפופים למלאי הקיים ולתנאי החנות.<br><a href="*|UNSUB|*" style="color:#AFA38F;">להסרה מרשימת התפוצה</a></div>
+  </td></tr>
+
+</table>
+</td></tr></table></body></html>"""
 
 
 def main():
