@@ -115,8 +115,13 @@ def fetch_all(share_url: str, ai_client, ocr_model: str = "gpt-4o-mini", max_ite
                 logger.warning(f"M.M.S: skip (no sku/name): {name}")
                 continue
             clean = crop_banner(im)
+            # Downscale — the source images are huge (up to ~4500px); a >1600px
+            # upload makes WP media time out (502) and bloats the site. Product
+            # photos don't need more than this.
+            if max(clean.size) > 1600:
+                clean.thumbnail((1600, 1600), Image.LANCZOS)
             buf = io.BytesIO()
-            clean.save(buf, format="JPEG", quality=90)
+            clean.save(buf, format="JPEG", quality=85)
             out.append({
                 "sku": sku,
                 "name": pname,
