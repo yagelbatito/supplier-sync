@@ -1,0 +1,52 @@
+name: Weekly Sales Email (Mailchimp)
+
+# Builds and sends a weekly "new arrivals + 10% coupon" email via Mailchimp,
+# featuring products created on the store in the last 7 days. Guarded by
+# SALES_EMAIL_SINCE so the initial bulk migration never triggers a blast, and
+# it only sends when there actually are new products.
+on:
+  schedule:
+    - cron: "0 6 * * 4"   # Thursday 06:00 UTC (~09:00 IL)
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "send = email the audience · draft = create a draft only (preview)"
+        required: false
+        default: "send"
+
+concurrency:
+  group: sales-email
+  cancel-in-progress: false
+
+jobs:
+  email:
+    name: Weekly new-arrivals email
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Build + send weekly email
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          MAILCHIMP_API_KEY: ${{ secrets.MAILCHIMP_API_KEY }}
+          MAILCHIMP_LIST_ID: ${{ secrets.MAILCHIMP_LIST_ID }}
+          VERIFY_SSL: "false"
+          LOG_LEVEL: "INFO"
+        run: |
+          MODE="${{ github.event.inputs.mode }}"
+          if [ "$MODE" = "draft" ]; then
+            python -u weekly_sales_email.py
+          else
+            python -u weekly_sales_email.py --send
+          fi
