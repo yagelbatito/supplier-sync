@@ -35,8 +35,12 @@ from src.core.config_loader import load_app_settings
 from src.woocommerce.client import WooCommerceClient
 
 SEND = "--send" in sys.argv
-DAYS = 7
-MAX_PRODUCTS = 16
+NEW_COLLECTION_NAME = "New collection"
+NEW_COLLECTION_COUNT = 5            # newest 5 from the New collection
+# One most-recently-updated product from each of these categories:
+HIGHLIGHT_CATEGORIES = [
+    "כיסאות בר", "כורסאות", "כיסאות אוכל", "הדומים", "שולחנות סלון", "שולחנות אוכל",
+]
 COUPON_CODE = "NEW10"
 COUPON_PCT = 10
 SALES_EMAIL_SINCE = os.getenv("SALES_EMAIL_SINCE", "2026-09-27")   # don't blast during migration
@@ -66,27 +70,62 @@ def _money(v):
         return ""
 
 
-def fetch_new_products(c):
-    since = (dt.datetime.utcnow() - dt.timedelta(days=DAYS)).strftime("%Y-%m-%dT%H:%M:%S")
-    prods = c.get("products", params={
-        "after": since, "status": "publish", "orderby": "date", "order": "desc",
-        "per_page": MAX_PRODUCTS, "stock_status": "instock",
+def _category_id(c, name):
+    try:
+        for cat in c.get("products/categories", params={"search": name, "per_page": 20}):
+            if cat.get("name") == name:
+                return cat["id"]
+    except Exception:
+        pass
+    return None
+
+
+def _card(p):
+    """WC product dict → email card dict, or None if not showable."""
+    img = p["images"][0].get("src", "") if p.get("images") else ""
+    price = p.get("price") or p.get("regular_price") or ""
+    if not img or not price:
+        return None
+    desc = re.sub(r"<[^>]+>", " ", p.get("short_description") or "")
+    desc = re.sub(r"\s+", " ", desc).strip()
+    if len(desc) > 130:
+        desc = desc[:127].rstrip() + "…"
+    return {"id": p["id"], "name": p.get("name", ""), "price": price,
+            "url": p.get("permalink", ""), "image": img, "desc": desc}
+
+
+def _fetch_cat(c, cat_id, orderby, count):
+    return c.get("products", params={
+        "category": cat_id, "status": "publish", "stock_status": "instock",
+        "orderby": orderby, "order": "desc", "per_page": max(count + 4, 6),
     })
-    out = []
-    for p in prods:
-        img = ""
-        if p.get("images"):
-            img = p["images"][0].get("src", "")
-        price = p.get("price") or p.get("regular_price") or ""
-        if not price:
-            continue
-        desc = re.sub(r"<[^>]+>", " ", p.get("short_description") or "")
-        desc = re.sub(r"\s+", " ", desc).strip()
-        if len(desc) > 130:
-            desc = desc[:127].rstrip() + "…"
-        out.append({"id": p["id"], "name": p.get("name", ""), "price": price,
-                    "url": p.get("permalink", ""), "image": img, "desc": desc})
-    return out
+
+
+def select_products(c):
+    """5 newest from 'New collection' + 1 most-recently-updated from each
+    highlight category. De-duplicated, in that order."""
+    picks, seen = [], set()
+
+    def take(products, limit):
+        n = 0
+        for p in products:
+            if p["id"] in seen:
+                continue
+            card = _card(p)
+            if not card:
+                continue
+            seen.add(p["id"]); picks.append(card); n += 1
+            if n >= limit:
+                break
+
+    nc_id = _category_id(c, NEW_COLLECTION_NAME)
+    if nc_id:
+        take(_fetch_cat(c, nc_id, "date", NEW_COLLECTION_COUNT), NEW_COLLECTION_COUNT)
+    for name in HIGHLIGHT_CATEGORIES:
+        cid = _category_id(c, name)
+        if cid:
+            take(_fetch_cat(c, cid, "modified", 1), 1)
+    return picks
 
 
 def ensure_coupon(c, product_ids):
@@ -226,10 +265,11 @@ def main():
                           consumer_secret=s.woocommerce_secret, wp_user=s.wp_user,
                           wp_app_password=s.wp_app_password, verify_ssl=s.verify_ssl, dry_run=False)
 
-    products = fetch_new_products(c)
-    print(f"new products (last {DAYS}d): {len(products)}", flush=True)
+    products = select_products(c)
+    print(f"selected products: {len(products)} "
+          f"({NEW_COLLECTION_COUNT} newest from New collection + highlights)", flush=True)
     if not products:
-        print("No new products this week — no email sent.", flush=True)
+        print("No products to feature — no email sent.", flush=True)
         return
 
     coupon_id = ensure_coupon(c, [p["id"] for p in products])
