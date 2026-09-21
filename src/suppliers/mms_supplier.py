@@ -74,16 +74,26 @@ def crop_banner(im: Image.Image):
 
 def _ocr(cli, img_bytes: bytes, model: str) -> dict:
     b64 = base64.b64encode(img_bytes).decode()
-    r = cli.chat.completions.create(model=model, temperature=0, max_tokens=200,
-        messages=[{"role": "user", "content": [
-            {"type": "text", "text": _OCR_PROMPT},
-            {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}}]}])
-    txt = r.choices[0].message.content.strip().strip("`")
-    txt = re.sub(r"^json", "", txt).strip()
-    try:
-        return json.loads(txt)
-    except Exception:
-        return {}
+    for attempt in range(5):
+        try:
+            r = cli.chat.completions.create(model=model, temperature=0, max_tokens=200,
+                messages=[{"role": "user", "content": [
+                    {"type": "text", "text": _OCR_PROMPT},
+                    {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + b64}}]}])
+            txt = r.choices[0].message.content.strip().strip("`")
+            txt = re.sub(r"^json", "", txt).strip()
+            try:
+                return json.loads(txt)
+            except Exception:
+                return {}
+        except Exception as exc:
+            msg = str(exc).lower()
+            if ("rate" in msg or "429" in msg or "timeout" in msg or "overload" in msg) and attempt < 4:
+                time.sleep(5 * (attempt + 1))
+                continue
+            logger.warning(f"OCR call failed: {str(exc)[:80]}")
+            return {}
+    return {}
 
 
 def _sku_from_name(fn: str) -> str:
@@ -133,6 +143,7 @@ def fetch_all(share_url: str, ai_client, ocr_model: str = "gpt-4o-mini", max_ite
             })
             if (idx + 1) % 25 == 0:
                 logger.info(f"M.M.S: OCR+crop {idx + 1}/{len(imgs)}")
+            time.sleep(0.4)          # smooth the OpenAI request rate
         except Exception as exc:
             logger.warning(f"M.M.S: failed on {name}: {exc}")
     logger.info(f"M.M.S fetch finished: {len(out)} products")
