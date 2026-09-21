@@ -41,7 +41,7 @@ NEW_COLLECTION_COUNT = 5            # newest 5 from the New collection
 HIGHLIGHT_CATEGORIES = [
     "כיסאות בר", "כורסאות", "כיסאות אוכל", "הדומים", "שולחנות סלון", "שולחנות אוכל",
 ]
-COUPON_CODE = "NEW10"
+COUPON_CODE = "10"
 COUPON_PCT = 10
 SALES_EMAIL_SINCE = os.getenv("SALES_EMAIL_SINCE", "2026-09-27")   # don't blast during migration
 SUBJECT = "חדש בגלריה לעיצוב הבית — ועוד 10% הנחה מיוחדת"
