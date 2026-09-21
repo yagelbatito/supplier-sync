@@ -1,0 +1,54 @@
+name: M.M.S Weekly Sync
+
+# M.M.S has no data feed — its catalog is a Dropbox folder of product images with
+# the name/מק״ט/price/dimensions burned into a bottom banner. mms_sync.py
+# downloads the folder, OCRs + crops each image, prices ×1.7, classifies by name,
+# uploads the clean image, and upserts by SKU. Supplier name "M.M.S" is stored in
+# meta only. Runs in the cloud.
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # Monday 04:00 UTC — its own slot
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max products (empty = all)"
+        required: false
+        default: ""
+
+concurrency:
+  group: mms-sync
+  cancel-in-progress: false
+
+jobs:
+  mms:
+    name: Sync M.M.S (Dropbox images → OCR → classify → upsert)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run M.M.S sync
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: "gpt-4o-mini"
+          MMS_DROPBOX_URL: ${{ secrets.MMS_DROPBOX_URL }}
+          VERIFY_SSL: "false"
+          LOG_LEVEL: "INFO"
+        run: |
+          LIM="${{ github.event.inputs.limit }}"
+          if [ -n "$LIM" ]; then
+            python -u mms_sync.py --apply --limit "$LIM"
+          else
+            python -u mms_sync.py --apply
+          fi
