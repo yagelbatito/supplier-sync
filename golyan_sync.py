@@ -219,6 +219,14 @@ def main():
         print("\n(DRY-RUN — no writes. Review the reports above, then run --apply.)", flush=True)
         return
 
+    # SAFETY: if classification wholesale-failed (e.g. OpenAI out of credits, API
+    # down), do NOT overwrite good categories by dumping everything to
+    # "בדיקה ידנית". Abort without writing when the failure is systemic.
+    if clf.available and by_sku and len(needs_review) > 0.6 * len(by_sku):
+        print(f"\n🛑 ABORT: classification failed for {len(needs_review)}/{len(by_sku)} products "
+              f"(likely OpenAI credits/API error). No writes — existing categories preserved.", flush=True)
+        return
+
     # ═══════════════ APPLY ═══════════════
     product_svc = ProductService(c)
     shipping_map = load_shipping_class_mapping()
