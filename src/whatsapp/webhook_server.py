@@ -182,6 +182,26 @@ def _dispatch(orchestrator: WhatsAppOrchestrator, msg: dict, owners: set[str]) -
                 logger.warning("Designer bot not attached; dropping customer message")
                 return
             if msg_type == "text":
+                # WhatsApp marketing consent (Israeli spam law): honor opt-out /
+                # opt-in keywords before anything else.
+                try:
+                    from src.whatsapp import wa_consent
+                    wc = getattr(orchestrator, "wc_client", None)
+                    if wc and wa_consent.is_opt_out(text_body):
+                        wa_consent.opt_out(wc, from_number)
+                        orchestrator.wa.send_text(from_number,
+                            "הוסרת מרשימת הדיוור שלנו ולא תקבל/י יותר הודעות שיווקיות. תודה 🙏",
+                            reply_to_msg_id=msg_id)
+                        return
+                    if wc and wa_consent.is_opt_in(text_body):
+                        wa_consent.opt_in(wc, from_number)
+                        orchestrator.wa.send_text(from_number,
+                            "נרשמת בהצלחה! 🎉 תקבל/י מאיתנו את המבצעים החדשים של הגלריה לעיצוב הבית. "
+                            "בכל עת אפשר להסיר בהודעת \"הסר\".",
+                            reply_to_msg_id=msg_id)
+                        return
+                except Exception as exc:
+                    logger.warning(f"consent handling failed: {exc}")
                 designer.handle(from_number, text_body, message_id=msg_id)
             else:
                 # Designer is text-based; nudge non-text customers to describe.
