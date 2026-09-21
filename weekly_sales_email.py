@@ -43,7 +43,7 @@ HIGHLIGHT_CATEGORIES = [
 ]
 COUPON_CODE = "10"
 COUPON_PCT = 10
-SALES_EMAIL_SINCE = os.getenv("SALES_EMAIL_SINCE", "2026-09-27")   # don't blast during migration
+SALES_EMAIL_SINCE = os.getenv("SALES_EMAIL_SINCE", "")   # gate disabled — curated 11-product email, safe to send weekly
 SUBJECT = "חדש בגלריה לעיצוב הבית — ועוד 10% הנחה מיוחדת"
 PREHEADER = "המוצרים החדשים שהגיעו השבוע — עם קוד להנחה נוספת של 10%"
 

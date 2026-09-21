@@ -6,7 +6,7 @@ name: Weekly Sales Email (Mailchimp)
 # it only sends when there actually are new products.
 on:
   schedule:
-    - cron: "0 6 * * 4"   # Thursday 06:00 UTC (~09:00 IL)
+    - cron: "0 17 * * 6"   # Saturday 17:00 UTC = 20:00 Israel (IDT; 19:00 in winter)
   workflow_dispatch:
     inputs:
       mode:
