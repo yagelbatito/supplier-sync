@@ -41,7 +41,7 @@ from src.suppliers import israel_judaica_supplier as ij
 SUPPLIER_KEY = "art"
 SKU_PREFIX = "ART"
 PRICE_MULT = 1.8                    # owner: ART price ×1.8 (+80%)
-REVIEW_FALLBACK_CAT = "בדיקה ידנית"
+REVIEW_FALLBACK_CAT = "מוצרים נוספים"
 
 # Judaica-specific hints on top of the shared ones.
 ART_HINTS = CLASSIFIER_HINTS + [
@@ -174,7 +174,7 @@ def main():
     # ── reports ──
     print("\n── category distribution ──", flush=True)
     for t, n in dist.most_common():
-        note = "  ⚠️ בדיקה ידנית" if t == REVIEW_FALLBACK_CAT else ""
+        note = "  ⚠️ מוצרים נוספים" if t == REVIEW_FALLBACK_CAT else ""
         print(f"  {n:4}  {t}{note}", flush=True)
     print("\n── price samples (B2B → ×1.8) ──", flush=True)
     for name, src, new in price_samples:
@@ -198,7 +198,7 @@ def main():
         return
 
     # SAFETY: don't let a wholesale classification failure (OpenAI out of
-    # credits / API down) overwrite good categories with "בדיקה ידנית".
+    # credits / API down) overwrite good categories with "מוצרים נוספים".
     if clf.available and by_sku and len(needs_review) > 0.6 * len(by_sku):
         print(f"\n🛑 ABORT: classification failed for {len(needs_review)}/{len(by_sku)} products "
               f"(likely OpenAI credits/API error). No writes — existing categories preserved.", flush=True)

@@ -21,7 +21,7 @@ from src.core.config_loader import load_app_settings, load_suppliers
 from src.core.constants import META_SYNC_MANAGED, META_SUPPLIER_NAME
 from src.woocommerce.client import WooCommerceClient
 
-FALLBACK_CAT = "בדיקה ידנית"
+FALLBACK_CAT = "מוצרים נוספים"
 
 
 def audit_product(p):

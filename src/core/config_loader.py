@@ -99,7 +99,7 @@ def load_suppliers() -> dict[str, SupplierConfig]:
             allow_republish=cfg.get("allow_republish", True),
             sync_images=cfg.get("sync_images", True),
             regenerate_content=cfg.get("regenerate_content", False),
-            default_category=cfg.get("default_category", "בדיקה ידנית"),
+            default_category=cfg.get("default_category", "מוצרים נוספים"),
             scraper_type=cfg.get("scraper_type", "requests"),
             sku_prefix=cfg.get("sku_prefix", key[:3].upper()),
             notes=cfg.get("notes", ""),

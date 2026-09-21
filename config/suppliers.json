@@ -10,7 +10,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": false,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "requests",
     "sku_prefix": "LPH",
     "notes": "Leopard Home furniture supplier"
@@ -26,7 +26,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": false,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "requests",
     "sku_prefix": "FLO",
     "notes": "Floralis furniture supplier - Shopify based"
@@ -42,7 +42,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": false,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "requests",
     "sku_prefix": "PER",
     "notes": "Perla Home decor supplier — Konimbo-based, 30% off list price"
@@ -58,7 +58,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": false,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "requests",
     "sku_prefix": "JUL",
     "notes": "Julian furniture supplier — disabled until image hotlink issue is resolved on target WP"
@@ -74,7 +74,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": false,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "api",
     "sku_prefix": "PDX",
     "notes": "Paldinox B2B API. Requires PALDINOX_TOKEN and PALDINOX_DOC_NUM in .env"
@@ -90,7 +90,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": true,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "manual",
     "sku_prefix": "WA",
     "notes": "Manual WhatsApp uploads. Disabled for regular scraper; used by whatsapp_listener.py"
@@ -106,7 +106,7 @@
     "allow_republish": true,
     "sync_images": true,
     "regenerate_content": false,
-    "default_category": "בדיקה ידנית",
+    "default_category": "מוצרים נוספים",
     "scraper_type": "requests",
     "sku_prefix": "H21",
     "notes": "Home 21 supplier"

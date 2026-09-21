@@ -43,7 +43,7 @@ from src.woocommerce.product_service import ProductService
 SUPPLIER_NAME = "M.M.S"
 SKU_PREFIX = "MMS"
 PRICE_MULT = 1.7
-REVIEW_FALLBACK_CAT = "בדיקה ידנית"
+REVIEW_FALLBACK_CAT = "מוצרים נוספים"
 MMS_HINTS = CLASSIFIER_HINTS + [
     "תמונה / קנבס / תמונה ממוסגרת → תמונות קיר.",
     "פסל בטון / דמוי אבן / אומנות בבטון → פסלים.",

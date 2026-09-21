@@ -45,7 +45,7 @@ from src.woocommerce.product_service import ProductService
 SUPPLIER_KEY = "avigifts"
 SKU_PREFIX = "AVI"
 PRICE_MULT = 1.8                   # owner: Avi Gifts site price ×1.8 (+80%)
-REVIEW_FALLBACK_CAT = "בדיקה ידנית"
+REVIEW_FALLBACK_CAT = "מוצרים נוספים"
 
 _SUPPLIER_WORDS = _re.compile(r"אבי\s*מתנות|avi\s*gifts|avigifts", _re.IGNORECASE)
 
@@ -165,7 +165,7 @@ def main():
 
     print("\n── category distribution ──", flush=True)
     for t, n in dist.most_common():
-        note = "  ⚠️ בדיקה ידנית" if t == REVIEW_FALLBACK_CAT else ""
+        note = "  ⚠️ מוצרים נוספים" if t == REVIEW_FALLBACK_CAT else ""
         print(f"  {n:4}  {t}{note}", flush=True)
     print("\n── price samples (site → ×1.8) ──", flush=True)
     for name, src, new in price_samples:
@@ -189,7 +189,7 @@ def main():
         return
 
     # SAFETY: don't let a wholesale classification failure (OpenAI out of
-    # credits / API down) overwrite good categories with "בדיקה ידנית".
+    # credits / API down) overwrite good categories with "מוצרים נוספים".
     if clf.available and by_sku and len(needs_review) > 0.6 * len(by_sku):
         print(f"\n🛑 ABORT: classification failed for {len(needs_review)}/{len(by_sku)} products "
               f"(likely OpenAI credits/API error). No writes — existing categories preserved.", flush=True)

@@ -27,7 +27,7 @@ STOCK_IN = "instock"
 STOCK_OUT = "outofstock"
 
 # Default fallback category name
-DEFAULT_REVIEW_CATEGORY = "בדיקה ידנית"
+DEFAULT_REVIEW_CATEGORY = "מוצרים נוספים"
 
 # CSV source identifier
 CSV_SOURCE_NAME = "csv"

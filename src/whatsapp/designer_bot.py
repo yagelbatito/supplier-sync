@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 # Categories we never offer as shopping destinations (sale/collection buckets).
 _SKIP_CATS = {
     "New collection", "Sale", "SALE 70%", "70% הנחה", "Spring", "אחר",
-    "ריהוט", "בדיקה ידנית", "Uncategorized", "ללא קטגוריה",
+    "ריהוט", "מוצרים נוספים", "Uncategorized", "ללא קטגוריה",
 }
 
 _SESSION_TTL = 60 * 60          # 1h of inactivity → fresh conversation
@@ -323,7 +323,7 @@ class DesignerBot:
         cat_ids: list[str] = []
         for name in cats:
             # fallback="" so an unknown name returns None instead of snapping to
-            # the "בדיקה ידנית" review bucket (which is empty for customers).
+            # the "מוצרים נוספים" review bucket (which is empty for customers).
             cid = self.category_svc.resolve(name, fallback="")
             if cid:
                 cat_ids.append(str(cid))

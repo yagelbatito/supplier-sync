@@ -636,7 +636,7 @@ class WhatsAppOrchestrator:
                     default_category=config.default_category,
                 )
                 # Never publish into a category that doesn't exist on the site —
-                # snap it to the closest real one so we avoid "בדיקה ידנית".
+                # snap it to the closest real one so we avoid "מוצרים נוספים".
                 product.mapped_category = self._closest_real_category(
                     matched, default=config.default_category,
                 )

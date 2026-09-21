@@ -1,0 +1,29 @@
+{
+  "business": {
+    "name": "הגלריה לעיצוב הבית – סמדר בטיטו",
+    "website": "https://smadarbetitohome.co.il/",
+    "vertical": "home_furniture",
+    "markets": ["IL"],
+    "languages": ["he", "en"],
+    "currency": "ILS",
+    "monthly_ad_budget": 5000,
+    "average_order_value": 500
+  },
+  "brand": {
+    "approved_claims": ["אמינות, איכות ושירות מעל הכול"],
+    "audiences": ["נכנסים לבית חדש", "משפצי בתים", "מחפשי ריהוט ועיצוב לבית"]
+  },
+  "safety": {
+    "default_mode": "read_only",
+    "max_budget_increase_pct_without_approval": 10,
+    "google_new_campaign_prefix": "SYSTEM_TEST_",
+    "block_deletes": true,
+    "require_approval_for_external_writes": true
+  },
+  "meta_mcp": {
+    "package": "@mikusnuz/meta-ads-mcp",
+    "graph_api_version": "v25.0",
+    "tool_count": 135,
+    "writes_via_approval_gateway_only": true
+  }
+}

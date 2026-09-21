@@ -1,6 +1,6 @@
 """
 recategorize_fallback.py — move managed PUBLISHED products that are currently
-sitting in the fallback category ("בדיקה ידנית") into a proper category, using
+sitting in the fallback category ("מוצרים נוספים") into a proper category, using
 a clean keyword→category map (targets verified to exist in WooCommerce).
 
 Usage:
@@ -18,7 +18,7 @@ from src.core.config_loader import load_app_settings, load_suppliers
 from src.core.constants import META_SYNC_MANAGED, META_SUPPLIER_NAME
 from src.woocommerce.client import WooCommerceClient
 
-FALLBACK = "בדיקה ידנית"
+FALLBACK = "מוצרים נוספים"
 
 # Ordered longest/most-specific FIRST. Targets must exist in WooCommerce.
 MAPPING = [

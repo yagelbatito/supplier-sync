@@ -30,7 +30,7 @@ class CategoryService:
         self._loaded = True
         logger.info(f"Loaded {len(self._categories)} WooCommerce categories")
 
-    def resolve(self, category_name: str, fallback: str = "בדיקה ידנית") -> Optional[int]:
+    def resolve(self, category_name: str, fallback: str = "מוצרים נוספים") -> Optional[int]:
         """
         Resolve a category name to a WooCommerce ID.
         Returns the fallback category ID if name not found.
@@ -52,7 +52,7 @@ class CategoryService:
         logger.warning(f"Category '{category_name}' AND fallback '{fallback}' not found in WooCommerce")
         return None
 
-    def resolve_list(self, category_name: str, fallback: str = "בדיקה ידנית") -> list[int]:
+    def resolve_list(self, category_name: str, fallback: str = "מוצרים נוספים") -> list[int]:
         cat_id = self.resolve(category_name, fallback)
         return [cat_id] if cat_id else []
 

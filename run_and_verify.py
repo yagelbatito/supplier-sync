@@ -47,7 +47,7 @@ from src.main import build_supplier, _build_images_payload
 logger = get_logger("run_and_verify")
 
 MAX_ATTEMPTS = 5
-DEFAULT_FALLBACK_CAT = "בדיקה ידנית"
+DEFAULT_FALLBACK_CAT = "מוצרים נוספים"
 
 import re
 

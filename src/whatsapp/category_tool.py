@@ -170,7 +170,7 @@ li{background:var(--surf);border:1px solid var(--line);border-radius:12px;paddin
 <div class="bar">
   <input type="search" id="q" placeholder="חיפוש לפי שם מוצר…">
   <select id="sup"><option value="">כל הספקים</option></select>
-  <select id="onlyempty"><option value="">הכל</option><option value="1">רק בלי קטגוריה / בדיקה ידנית</option></select>
+  <select id="onlyempty"><option value="">הכל</option><option value="1">רק בלי קטגוריה / מוצרים נוספים</option></select>
   <select id="pagesize"><option value="60">60 בעמוד</option><option value="150">150 בעמוד</option><option value="400">400 בעמוד</option></select>
   <button class="newbtn" id="newbtn" type="button">➕ קטגוריה חדשה</button>
   <span class="count" id="count"></span>
@@ -199,7 +199,7 @@ function optionsHtml(cur){
 }
 function row(p){
   const li=document.createElement("li");
-  const empty=!p.category||p.category==="בדיקה ידנית";
+  const empty=!p.category||p.category==="מוצרים נוספים";
   li.className=empty?"empty":"";
   li.innerHTML=`<div><div class="name">${p.name}</div>
     <div class="meta">${p.supplier} · ${p.status==='publish'?'מפורסם':p.status}</div></div>
@@ -215,7 +215,7 @@ async function save(id,cat,li){
       body:JSON.stringify({key:KEY,id,category:cat})});
     if(!r.ok)throw new Error(await r.text());
     dot.className="dot saved";
-    li.classList.toggle("empty", !cat||cat==="בדיקה ידנית");
+    li.classList.toggle("empty", !cat||cat==="מוצרים נוספים");
   }catch(e){dot.className="dot err";alert("שמירה נכשלה: "+e.message)}
 }
 async function load(reset){
@@ -223,7 +223,7 @@ async function load(reset){
   if(reset){off=0;$("#list").innerHTML=""}
   const p=new URLSearchParams({key:KEY,offset:off,limit:LIMIT,
     supplier:$("#sup").value,q:$("#q").value.trim(),
-    category:$("#onlyempty").value==="1"?"בדיקה ידנית":""});
+    category:$("#onlyempty").value==="1"?"מוצרים נוספים":""});
   try{
     const d=await api("/api/cat/products?"+p);
     total=d.total;

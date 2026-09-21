@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 # Store buckets that are NOT real destinations (sales/collections/manual/vague).
 EXCLUDE_CATEGORIES = {
     "70% הנחה", "Gift Card", "New collection", "SALE 70%", "Sale", "Spring",
-    "Cote Norie", "אחר", "בדיקה ידנית", "Uncategorized", "ללא קטגוריה",
+    "Cote Norie", "אחר", "מוצרים נוספים", "Uncategorized", "ללא קטגוריה",
     "אקססוריז / ציוד נלווה",       # vague catch-all — the model over-uses it
 }
 

@@ -9,7 +9,7 @@ default; --apply moves the safe cases.
 
 Flags per product:
   OK            current category == classifier's proposal
-  REVIEW        currently in "בדיקה ידנית" / no category → classifier found a home
+  REVIEW        currently in "מוצרים נוספים" / no category → classifier found a home
   NO-HOME       currently unclassified AND classifier also unsure (needs a human)
   MISMATCH      has a real category but the classifier proposes a different one
 
@@ -41,7 +41,7 @@ from src.enrichment.product_classifier import ProductClassifier
 from src.woocommerce.category_service import CategoryService
 from src.woocommerce.client import WooCommerceClient
 
-FALLBACK = "בדיקה ידנית"
+FALLBACK = "מוצרים נוספים"
 APPLY = "--apply" in sys.argv
 APPLY_MISMATCH = "--apply-mismatch" in sys.argv
 MIN_CONF = float(sys.argv[sys.argv.index("--min-conf") + 1]) if "--min-conf" in sys.argv else 0.6

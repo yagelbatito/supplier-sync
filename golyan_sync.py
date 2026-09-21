@@ -39,7 +39,7 @@ from src.woocommerce.product_service import ProductService
 from src.suppliers.golyan_supplier import fetch_all
 from config.golyan_mapping import FURNITURE_TARGETS, NEW_CATEGORIES, CLASSIFIER_HINTS
 
-REVIEW_FALLBACK_CAT = "בדיקה ידנית"    # where off-list products land (flagged for review)
+REVIEW_FALLBACK_CAT = "מוצרים נוספים"    # where off-list products land (flagged for review)
 
 SUPPLIER_KEY = "julian"     # keep continuity with existing JUL-* products
 SKU_PREFIX = "JUL"
@@ -183,7 +183,7 @@ def main():
     print("\n── category distribution (per-product classifier) ──", flush=True)
     for t, n in dist.most_common():
         flag = " [ריהוט]" if t in FURNITURE_TARGETS else ""
-        note = "  ⚠️ בדיקה ידנית" if t == REVIEW_FALLBACK_CAT else ""
+        note = "  ⚠️ מוצרים נוספים" if t == REVIEW_FALLBACK_CAT else ""
         print(f"  {n:4}  {t}{flag}{note}", flush=True)
 
     print("\n── price samples (source → store) ──", flush=True)
@@ -221,7 +221,7 @@ def main():
 
     # SAFETY: if classification wholesale-failed (e.g. OpenAI out of credits, API
     # down), do NOT overwrite good categories by dumping everything to
-    # "בדיקה ידנית". Abort without writing when the failure is systemic.
+    # "מוצרים נוספים". Abort without writing when the failure is systemic.
     if clf.available and by_sku and len(needs_review) > 0.6 * len(by_sku):
         print(f"\n🛑 ABORT: classification failed for {len(needs_review)}/{len(by_sku)} products "
               f"(likely OpenAI credits/API error). No writes — existing categories preserved.", flush=True)
