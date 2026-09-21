@@ -1,0 +1,46 @@
+name: Remediate Categories (backlog cleanup)
+
+# One-off / on-demand: move products stranded in the fallback category
+# 'מוצרים נוספים' into their correct category by precise name-keyword rules
+# (jewelry, mezuzahs, kiddush cups, plants). Manual trigger only.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Type 'apply' to write changes (empty = dry-run)"
+        required: false
+        default: ""
+
+concurrency:
+  group: remediate-categories
+  cancel-in-progress: false
+
+jobs:
+  remediate:
+    name: Reclassify fallback-category products
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run remediation
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          VERIFY_SSL: "false"
+          LOG_LEVEL: "INFO"
+        run: |
+          if [ "${{ github.event.inputs.apply }}" = "apply" ]; then
+            python -u remediate_categories.py --apply
+          else
+            python -u remediate_categories.py
+          fi
