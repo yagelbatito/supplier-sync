@@ -5,6 +5,10 @@ lxml>=4.9.0
 selenium>=4.18.0
 webdriver-manager>=4.0.0
 
+# Image processing (M.M.S: banner OCR crop)
+Pillow>=10.0.0
+numpy>=1.24.0
+
 # WooCommerce
 woocommerce>=3.0.0
 
