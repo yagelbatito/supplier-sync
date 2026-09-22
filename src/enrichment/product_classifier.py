@@ -19,6 +19,7 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
+from src.enrichment.keyword_rules import classify_by_rules
 from src.core.logger import get_logger
 
 logger = get_logger(__name__)
@@ -126,16 +127,28 @@ class ProductClassifier:
         )
 
     def classify(self, products: list) -> dict:
-        """products: [{"sku","name"}]. Returns {sku: ClassResult}. Cached by sku."""
+        """products: [{"sku","name"}]. Returns {sku: ClassResult}. Cached by sku.
+
+        A deterministic keyword rule decides the obvious names for free; only the
+        remainder is sent to the LLM (big token saving on large catalogues)."""
         out: dict = {}
         todo = []
         for p in products:
             sku = p.get("sku") or ""
             if sku in self._cache:
                 out[sku] = self._cache[sku]
+                continue
+            # 1) deterministic keyword rule (no LLM cost)
+            cat = classify_by_rules(p.get("name", ""), self._names)
+            if cat:
+                res = ClassResult(category=cat, confidence=0.95, reason="rule")
+                self._cache[sku] = res
+                out[sku] = res
             else:
                 todo.append(p)
 
+        if todo:
+            logger.info(f"classifier: {len(out)} by rule (free), {len(todo)} to LLM")
         catalog = self._catalog_text()
         for i in range(0, len(todo), self.batch_size):
             batch = todo[i:i + self.batch_size]
