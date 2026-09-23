@@ -25,6 +25,7 @@ from src.core.constants import (
     STATUS_PUBLISH,
     STOCK_OUT,
 )
+from src.core.blocklist import is_blocked
 from src.core.logger import get_logger
 from src.core.utils import now_iso
 from src.models.product import SupplierProduct
@@ -137,6 +138,11 @@ class ProductService:
         return None
 
     def create(self, product: SupplierProduct, category_ids: list[int], images_payload: list[dict], shipping_class: str = "", force_new_collection: bool = False) -> dict:
+        # Blocklist: never upload Santa/Christmas items (any supplier). Central
+        # guard so no sync can slip one in.
+        if is_blocked(product.name):
+            logger.info(f"BLOCKED (not created): {product.name[:50]} SKU={product.sku}")
+            return {"id": None, "blocked": True}
         # New arrivals → also "New collection" (supplier syncs date-gated; bot
         # uploads force it immediately).
         category_ids = self._with_new_collection(category_ids, force=force_new_collection)
