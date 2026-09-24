@@ -220,6 +220,14 @@ class ProductService:
             "meta_data": self._build_meta(product),
         }
 
+        # No product image → never publish it. A product without a real photo
+        # looks broken on the storefront, so a new one is created as a draft
+        # (hidden) instead of published. On an update an empty images_payload
+        # just means "leave existing images alone", so this only gates creates.
+        if is_new and not images_payload:
+            payload["status"] = STATUS_DRAFT
+            logger.info(f"No image → draft: SKU={product.sku}")
+
         # Native WooCommerce dimensions (cm). depth → length (WC has no
         # "depth"). Only sent when we actually parsed a value, so an update
         # never wipes existing dimensions with blanks.
