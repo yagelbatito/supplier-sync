@@ -14,13 +14,41 @@ from src.scraping.http_client import HttpClient
 from src.scraping.parser_utils import extract_attribute, find_images, find_price, parse_dimensions
 from src.suppliers.base_supplier import BaseSupplier
 
-# Categories to scrape — extend this list freely
+# Categories to scrape — ALL Leopard site categories (auto-discovered from the
+# site menu + the original parents). The scraper dedupes by product URL, so
+# overlapping parent/child categories never create duplicate products.
 CATEGORY_URLS = [
-    ("כיסאות בר", "https://www.leopardhome.com/%D7%9B%D7%A1%D7%90%D7%95%D7%AA-%D7%91%D7%A8/"),
-    ("שולחנות סלון", "https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA-%D7%A1%D7%9C%D7%95%D7%9F/"),
-    ("פינות אוכל", "https://www.leopardhome.com/%D7%A4%D7%99%D7%A0%D7%95%D7%AA-%D7%90%D7%95%D7%9B%D7%9C/"),
-    ("ספות", "https://www.leopardhome.com/%D7%A1%D7%A4%D7%95%D7%AA/"),
-    ("כורסאות", "https://www.leopardhome.com/%D7%9B%D7%95%D7%A8%D7%A1%D7%90%D7%95%D7%AA/"),
+    ('אביזרים משלימים', 'https://www.leopardhome.com/%D7%90%D7%91%D7%99%D7%96%D7%A8%D7%99%D7%9D-%D7%9E%D7%A9%D7%9C%D7%99%D7%9E%D7%99%D7%9D/'),
+    ('הדומים', 'https://www.leopardhome.com/%D7%94%D7%93%D7%95%D7%9E%D7%99%D7%9D/'),
+    ('כורסאות בד', 'https://www.leopardhome.com/%D7%9B%D7%95%D7%A8%D7%A1%D7%90%D7%95%D7%AA-%D7%91%D7%93/'),
+    ('כורסאות וינטג', 'https://www.leopardhome.com/%D7%9B%D7%95%D7%A8%D7%A1%D7%90%D7%95%D7%AA-%D7%95%D7%99%D7%A0%D7%98%D7%92/'),
+    ('כורסאות לסלון', 'https://www.leopardhome.com/%D7%9B%D7%95%D7%A8%D7%A1%D7%90%D7%95%D7%AA-%D7%9C%D7%A1%D7%9C%D7%95%D7%9F/'),
+    ('כורסאות עור', 'https://www.leopardhome.com/%D7%9B%D7%95%D7%A8%D7%A1%D7%90%D7%95%D7%AA-%D7%A2%D7%95%D7%A8/'),
+    ('כסאות', 'https://www.leopardhome.com/%D7%9B%D7%A1%D7%90%D7%95%D7%AA/'),
+    ('כסאות אוכל', 'https://www.leopardhome.com/%D7%9B%D7%A1%D7%90%D7%95%D7%AA-%D7%90%D7%95%D7%9B%D7%9C/'),
+    ('כסאות בר', 'https://www.leopardhome.com/%D7%9B%D7%A1%D7%90%D7%95%D7%AA-%D7%91%D7%A8/'),
+    ('מזנונים', 'https://www.leopardhome.com/%D7%9E%D7%96%D7%A0%D7%95%D7%A0%D7%99%D7%9D/'),
+    ('מראות', 'https://www.leopardhome.com/%D7%9E%D7%A8%D7%90%D7%95%D7%AA/'),
+    ('ספות לסלון', 'https://www.leopardhome.com/%D7%A1%D7%A4%D7%95%D7%AA-%D7%9C%D7%A1%D7%9C%D7%95%D7%9F/'),
+    ('ספות מבד', 'https://www.leopardhome.com/%D7%A1%D7%A4%D7%95%D7%AA-%D7%9E%D7%91%D7%93/'),
+    ('ספות מעוצבות', 'https://www.leopardhome.com/%D7%A1%D7%A4%D7%95%D7%AA-%D7%9E%D7%A2%D7%95%D7%A6%D7%91%D7%95%D7%AA/'),
+    ('ספות מעור', 'https://www.leopardhome.com/%D7%A1%D7%A4%D7%95%D7%AA-%D7%9E%D7%A2%D7%95%D7%A8/'),
+    ('ספריות מעוצבות', 'https://www.leopardhome.com/%D7%A1%D7%A4%D7%A8%D7%99%D7%95%D7%AA-%D7%9E%D7%A2%D7%95%D7%A6%D7%91%D7%95%D7%AA/'),
+    ('קונזולות', 'https://www.leopardhome.com/%D7%A7%D7%95%D7%A0%D7%96%D7%95%D7%9C%D7%95%D7%AA/'),
+    ('ריהוט וינטג', 'https://www.leopardhome.com/%D7%A8%D7%99%D7%94%D7%95%D7%98-%D7%95%D7%99%D7%A0%D7%98%D7%92/'),
+    ('ריהוט למשרד ביתי', 'https://www.leopardhome.com/%D7%A8%D7%99%D7%94%D7%95%D7%98-%D7%9C%D7%9E%D7%A9%D7%A8%D7%93-%D7%91%D7%99%D7%AA%D7%99/'),
+    ('שולחנות', 'https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA/'),
+    ('שולחנות אוכל', 'https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA-%D7%90%D7%95%D7%9B%D7%9C/'),
+    ('שולחנות עבודה', 'https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA-%D7%A2%D7%91%D7%95%D7%93%D7%94/'),
+    ('שולחנות צד', 'https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA-%D7%A6%D7%93/'),
+    ('שולחנות קפה', 'https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA-%D7%A7%D7%A4%D7%94/'),
+    ('שידות', 'https://www.leopardhome.com/%D7%A9%D7%99%D7%93%D7%95%D7%AA/'),
+    ('שידות טלוויזיה', 'https://www.leopardhome.com/%D7%A9%D7%99%D7%93%D7%95%D7%AA-%D7%98%D7%9C%D7%95%D7%95%D7%99%D7%96%D7%99%D7%94/'),
+    ('שידות צד', 'https://www.leopardhome.com/%D7%A9%D7%99%D7%93%D7%95%D7%AA-%D7%A6%D7%93/'),
+    ('שולחנות סלון', 'https://www.leopardhome.com/%D7%A9%D7%95%D7%9C%D7%97%D7%A0%D7%95%D7%AA-%D7%A1%D7%9C%D7%95%D7%9F/'),
+    ('פינות אוכל', 'https://www.leopardhome.com/%D7%A4%D7%99%D7%A0%D7%95%D7%AA-%D7%90%D7%95%D7%9B%D7%9C/'),
+    ('ספות', 'https://www.leopardhome.com/%D7%A1%D7%A4%D7%95%D7%AA/'),
+    ('כורסאות', 'https://www.leopardhome.com/%D7%9B%D7%95%D7%A8%D7%A1%D7%90%D7%95%D7%AA/'),
 ]
 
 BASE = "https://www.leopardhome.com"
