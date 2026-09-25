@@ -17,7 +17,9 @@ BLOCKED_KEYWORDS = [
 ]
 
 
-def is_blocked(name: str) -> bool:
-    """True if the product name contains any blocked keyword (case-insensitive)."""
-    n = (name or "").lower()
-    return any(kw.lower() in n for kw in BLOCKED_KEYWORDS)
+def is_blocked(*texts: str) -> bool:
+    """True if ANY given text (name, description, …) contains a blocked keyword
+    (case-insensitive). Christmas / Santa items must be caught by name OR
+    description, from any supplier."""
+    blob = " ".join(t or "" for t in texts).lower()
+    return any(kw.lower() in blob for kw in BLOCKED_KEYWORDS)

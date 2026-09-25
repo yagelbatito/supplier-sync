@@ -35,12 +35,16 @@ def main():
     for kw in BLOCKED_KEYWORDS:
         page = 1
         while True:
+            # WC search matches name + description + sku, so a Christmas keyword
+            # buried in the description is found too; then confirm with is_blocked
+            # over name + both description fields.
             b = c.get("products", params={"per_page": 100, "page": page, "search": kw,
-                                          "status": "any", "_fields": "id,name,sku"})
+                                          "status": "any",
+                                          "_fields": "id,name,sku,description,short_description"})
             if not b:
                 break
             for p in b:
-                if is_blocked(p.get("name", "")):
+                if is_blocked(p.get("name", ""), p.get("description", ""), p.get("short_description", "")):
                     found[p["id"]] = p
             if len(b) < 100:
                 break

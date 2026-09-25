@@ -140,7 +140,7 @@ class ProductService:
     def create(self, product: SupplierProduct, category_ids: list[int], images_payload: list[dict], shipping_class: str = "", force_new_collection: bool = False) -> dict:
         # Blocklist: never upload Santa/Christmas items (any supplier). Central
         # guard so no sync can slip one in.
-        if is_blocked(product.name):
+        if is_blocked(product.name, product.original_description, product.final_description()):
             logger.info(f"BLOCKED (not created): {product.name[:50]} SKU={product.sku}")
             return {"id": None, "blocked": True}
         # New arrivals → also "New collection" (supplier syncs date-gated; bot
