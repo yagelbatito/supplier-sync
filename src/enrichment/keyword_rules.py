@@ -20,6 +20,8 @@ import re
 # (category, [trigger substrings]). ORDER MATTERS — specific first.
 # A leading/trailing space in a trigger avoids matching inside a longer word.
 _RULES = [
+    # a mirrored TRAY ("מגש מראה") is a tray, not a mirror — must beat מראות.
+    ("מגשים", ["מגש מראה", "מגש מראת", "מגש עם מראה", "מגשי מראה", "מגש בשילוב מראה"]),
     # ── furniture: seating ──
     ("כיסאות בר", ["כיסא בר", "כסא בר", "כיסאות בר", "כסאות בר", "שרפרף בר", "סטול בר", "כיסא באר"]),
     ("כיסאות אוכל", ["כיסא אוכל", "כסא אוכל", "כיסאות אוכל", "כסאות אוכל", "כיסא פינת אוכל", "כסא פינת אוכל"]),
