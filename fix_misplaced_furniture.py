@@ -72,10 +72,10 @@ def main():
                 break
             for p in b:
                 target = classify_by_rules(p.get("name", ""), allowed)
-                # Only move items that don't belong in furniture at all (decor,
-                # kitchenware, judaica). A bench/vitrine is still furniture — leave
-                # those where the owner placed them.
-                if target and target != fname and target in name_to_id and target not in FURNITURE:
+                # Move every product to the category its name indicates — including
+                # furniture→furniture (a bar-chair in 'כיסאות אוכל' → 'כיסאות בר',
+                # a side-table in 'שולחנות סלון' → 'שולחנות צד').
+                if target and target != fname and target in name_to_id:
                     moves.append((p["id"], p.get("name", "")[:38], fname, target))
             if len(b) < 100:
                 break
