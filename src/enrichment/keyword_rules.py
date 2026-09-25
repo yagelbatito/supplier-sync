@@ -22,6 +22,9 @@ import re
 _RULES = [
     # a mirrored TRAY ("מגש מראה") is a tray, not a mirror — must beat מראות.
     ("מגשים", ["מגש מראה", "מגש מראת", "מגש עם מראה", "מגשי מראה", "מגש בשילוב מראה"]),
+    # "דקו X" (deco fish, etc.) are decorative accessories. Bounded so it does
+    # NOT match "דקורטיבי".
+    ("אקססוריז", ["דקו ", "דקו-"]),
     # ── furniture: seating ──
     ("כיסאות בר", ["כיסא בר", "כסא בר", "כיסאות בר", "כסאות בר", "שרפרף בר", "סטול בר", "כיסא באר"]),
     # any chair that is NOT a bar-stool (כיסאות בר is matched first, above) is a
