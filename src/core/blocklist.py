@@ -12,7 +12,7 @@ Add keywords here to extend the block.
 BLOCKED_KEYWORDS = [
     "סנטה",        # Santa
     "קריסמס", "כריסמס", "קריסטמס", "כריסטמס",   # Christmas (Hebrew spellings)
-    "חג המולד",    # Christmas (lit. "the Nativity holiday")
+    "חג המולד", "חג מולד",    # Christmas (with and without the ה)
     "santa", "christmas", "xmas",
 ]
 
