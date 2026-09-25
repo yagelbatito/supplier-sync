@@ -35,10 +35,19 @@ def main():
                           consumer_secret=s.woocommerce_secret, wp_user=s.wp_user,
                           wp_app_password=s.wp_app_password, verify_ssl=s.verify_ssl, dry_run=not APPLY)
 
-    # all store categories: name -> id
+    # all store categories: name -> id. The store API intermittently returns an
+    # empty page; retry so the category list is never silently truncated (an
+    # incomplete list makes classify() skip valid targets -> missed moves).
+    def get_retry(path, params, tries=6):
+        for _ in range(tries):
+            r = c.get(path, params=params)
+            if r:
+                return r
+        return []
+
     name_to_id, page = {}, 1
     while True:
-        b = c.get("products/categories", params={"per_page": 100, "page": page, "_fields": "id,name"})
+        b = get_retry("products/categories", {"per_page": 100, "page": page, "_fields": "id,name"})
         if not b:
             break
         for t in b:
@@ -47,6 +56,8 @@ def main():
             break
         page += 1
     allowed = set(name_to_id)
+    assert "חנוכה" in allowed and "מגשים" in allowed and len(allowed) > 50, \
+        f"category list incomplete ({len(allowed)}) — aborting to avoid bad moves"
 
     moves = []          # (id, name, from_cat, to_cat)
     for fname in FURNITURE:
@@ -55,8 +66,8 @@ def main():
             continue
         page = 1
         while True:
-            b = c.get("products", params={"per_page": 100, "page": page, "category": fid,
-                                          "status": "publish", "_fields": "id,name"})
+            b = get_retry("products", {"per_page": 100, "page": page, "category": fid,
+                                       "status": "publish", "_fields": "id,name"})
             if not b:
                 break
             for p in b:
