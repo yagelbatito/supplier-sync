@@ -14,6 +14,11 @@ BLOCKED_KEYWORDS = [
     "קריסמס", "כריסמס", "קריסטמס", "כריסטמס",   # Christmas (Hebrew spellings)
     "חג המולד", "חג מולד",    # Christmas (with and without the ה)
     "santa", "christmas", "xmas",
+    # Giuliano/Julian — a Christmas/party-decor brand the store owner does not
+    # want (nutcrackers, sleighs, reindeer, candy canes, wreaths, snowmen).
+    "giuliano", "goliano", "guliano", "גוליאנו",
+    "noel", "נואל",
+    "מזחלת", "מפצח אגוזים", "איש שלג", "בובת שלג", "אייל הצפון", "גרב מתנות", "מקל סוכריה",
 ]
 
 
