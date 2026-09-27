@@ -1,0 +1,48 @@
+name: Leopard Weekly Sync
+
+# Leopard has 31 categories scraped page-by-page (~1500 product pages), so it
+# gets its OWN workflow with a shorter request delay and the full 6h budget —
+# the shared weekly-sync kept timing out on it. Resumable (fast-path skips
+# products that already exist), so re-running finishes any leftover.
+on:
+  schedule:
+    - cron: "0 2 * * 5"   # Friday 02:00 UTC — its own weekly slot
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = no writes"
+        required: false
+        default: "false"
+
+concurrency:
+  group: leopard-sync
+  cancel-in-progress: false
+
+jobs:
+  leopard:
+    name: Sync Leopard (31 categories)
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run Leopard sync
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL: "gpt-4o-mini"
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          VERIFY_SSL: "false"
+          REQUEST_DELAY: "0.3"
+          LOG_LEVEL: "INFO"
+        run: python -u run_and_verify.py --supplier leopard
