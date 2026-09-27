@@ -1,0 +1,47 @@
+name: ART Min-Order Fix
+
+# One-off: patch ONLY the _min_order_qty meta on ART pack products to >=50% of
+# the supplier pack (rounded up). No re-enrichment / re-upload. Manual trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Type 'apply' to write (empty = dry-run)"
+        required: false
+        default: ""
+
+concurrency:
+  group: art-minqty
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    name: Update ART min-order meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run min-order fix
+        env:
+          WOOCOMMERCE_URL: ${{ secrets.WOOCOMMERCE_URL }}
+          WOOCOMMERCE_KEY: ${{ secrets.WOOCOMMERCE_KEY }}
+          WOOCOMMERCE_SECRET: ${{ secrets.WOOCOMMERCE_SECRET }}
+          WP_USER: ${{ secrets.WP_USER }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          IJ_USER: ${{ secrets.IJ_USER }}
+          IJ_PASSWORD: ${{ secrets.IJ_PASSWORD }}
+          VERIFY_SSL: "false"
+          LOG_LEVEL: "INFO"
+        run: |
+          if [ "${{ github.event.inputs.apply }}" = "apply" ]; then
+            python -u art_min_qty_fix.py --apply
+          else
+            python -u art_min_qty_fix.py
+          fi
