@@ -25,6 +25,7 @@ _RULES = [
     # "דקו X" (deco fish, etc.) are decorative accessories. Bounded so it does
     # NOT match "דקורטיבי".
     ("אקססוריז", ["דקו ", "דקו-"]),
+    ("בלוקים אקרילים", ["בלוק אקריל", "בלוקים אקריל", "בלוק אקרילי", "מעמד אקריל"]),
     # ── furniture: seating ──
     ("כיסאות בר", ["כיסא בר", "כסא בר", "כיסאות בר", "כסאות בר", "שרפרף בר", "סטול בר", "כיסא באר"]),
     # any chair that is NOT a bar-stool (כיסאות בר is matched first, above) is a
