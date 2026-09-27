@@ -280,12 +280,28 @@ class WhatsAppOrchestrator:
         "🔄 *החלפת משפט בתיאור* — `החלף תיאור <שם>, <ישן>, <חדש>`\n"
         "📦 *סימון אזל* — `אזל <שם>`\n"
         "🗑️ *מחיקה* — `מחק <שם>`\n"
-        "♻️ *ניקוי מטמון* — `נקה מטמון <שם>`\n\n"
+        "♻️ *ניקוי מטמון* — `נקה מטמון <שם>`\n"
+        "✉️ *מייל דיוור/מבצע* — `דיוור`\n\n"
         "הקלד *תפריט* בכל רגע כדי לראות שוב את הרשימה."
     )
 
     def _send_menu(self, from_number: str, message_id: str) -> None:
         self.wa.send_text(from_number, self._MENU, reply_to_msg_id=message_id)
+
+    def _cmd_mail_link(self, from_number: str, message_id: str) -> None:
+        """Reply with a link to the promo-email builder page (rich form + preview)."""
+        import os as _os
+        base = (_os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+                or "https://smadar-whatsapp.onrender.com")
+        key = (_os.getenv("BOT_ADMIN_KEY") or _os.getenv("CATEGORY_TOOL_KEY")
+               or _os.getenv("WHATSAPP_VERIFY_TOKEN") or "").strip()
+        url = f"{base}/mail?key={key}"
+        msg = ("✉️ *יצירת מייל דיוור / מבצע*\n\n"
+               "פתח את הקישור, מלא *כותרת* + *מלל* + *קישורי מוצרים*, ולחץ *צור מבצע*.\n"
+               "תראה תצוגה מקדימה, ותוכל לשלוח *מייל ניסיון* אליך ואז *לשלוח לכולם*.\n"
+               "הקופון (10%, שבוע) יחול רק על המוצרים שתבחר.\n\n"
+               f"{url}")
+        self.wa.send_text(from_number, msg, reply_to_msg_id=message_id)
 
     def _handle_command_or_query(self, from_number: str, body: str, message_id: str) -> None:
         text = (body or "").strip()
@@ -317,6 +333,11 @@ class WhatsAppOrchestrator:
                    "רענון מוצר", "רענן מוצר", "רענון", "רענן"):
             if text.startswith(kw):
                 self._cmd_clear_cache(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        # promo email: send the owner a link to the campaign builder page
+        for kw in ("דיוור", "מייל דיוור", "מייל מבצע", "מבצע מייל", "ניוזלטר"):
+            if text.startswith(kw):
+                self._cmd_mail_link(from_number, message_id)
                 return
         # management: mark out of stock + draft
         for kw in ("אזל", "נגמר", "מכר", "מכרתי", "אין במלאי", "נמכר"):

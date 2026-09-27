@@ -36,5 +36,7 @@ services:
         sync: false
       - key: WP_APP_PASSWORD
         sync: false
+      - key: MAILCHIMP_API_KEY        # for the /mail promo-email builder
+        sync: false
       - key: VERIFY_SSL
         value: "false"
