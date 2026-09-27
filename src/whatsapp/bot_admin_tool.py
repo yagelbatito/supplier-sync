@@ -146,6 +146,8 @@ button:disabled{opacity:.55;cursor:default}
 .load{text-align:center;color:var(--muted);padding:40px}
 </style></head><body><div class="wrap">
 <h1>ניהול הבוט — סמדר AI</h1>
+<div class="sub"><a id="mailLink" href="#" style="display:inline-block;background:#A9812F;color:#fff;text-decoration:none;padding:8px 16px;border-radius:6px;font-weight:bold;">✉️ יצירת מייל דיוור אוטומטי</a></div>
+<script>document.getElementById('mailLink').href='/mail?key='+(new URLSearchParams(location.search).get('key')||'');</script>
 <div class="sub">כל שינוי נשמר בוורדפרס (שורד deploy) ומוחל מיד על ההודעה הבאה של לקוח. אין צורך בהעלאה מחדש.</div>
 <div id="app" class="load">טוען…</div>
 

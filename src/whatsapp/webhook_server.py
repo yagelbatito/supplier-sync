@@ -94,6 +94,13 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
     except Exception as exc:
         logger.warning(f"bot admin tool not mounted: {exc}")
 
+    # Ad-hoc promo email builder (occasion + text + product links → coupon + email).
+    try:
+        from src.whatsapp.mail_campaign_tool import register_mail_campaign_tool
+        register_mail_campaign_tool(app, orchestrator)
+    except Exception as exc:
+        logger.warning(f"mail campaign tool not mounted: {exc}")
+
     @app.get("/webhook/whatsapp", response_class=PlainTextResponse)
     def verify(
         hub_mode: str = Query("", alias="hub.mode"),
