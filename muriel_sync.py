@@ -147,7 +147,7 @@ def main():
 
     consumed = set()
     stats = {"variable": 0, "simple": 0, "skip_novalue": 0, "skip_route": 0,
-             "skip_img": 0, "exists": 0, "created": 0, "failed": 0}
+             "skip_watermark": 0, "skip_img": 0, "exists": 0, "created": 0, "failed": 0}
     created = 0
     for it in items:
         if it["id"] in consumed:
@@ -156,6 +156,11 @@ def main():
             consumed.add(vid)
         if not priceable(it):
             stats["skip_novalue"] += 1
+            continue
+        # Watermarked image: catalog entries titled "מוריאל אומנות" have the
+        # supplier name burned onto the photo — owner does not want those live.
+        if (it.get("t") or "").strip() == "מוריאל אומנות":
+            stats["skip_watermark"] = stats.get("skip_watermark", 0) + 1
             continue
         cat = route(it)
         if not cat:
