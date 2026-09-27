@@ -10,10 +10,11 @@ beautifulsoup4>=4.12.0
 lxml>=4.9.0
 
 woocommerce>=3.0.0
-openai>=1.0.0
+httpx>=0.27,<1            # openai needs the REAL httpx (Py3.14 pulled a broken fork)
+openai>=1.30,<2          # pin the 1.x SDK; unbounded resolved to a bad 3.x on Py3.14
 
 python-dotenv>=1.0.0
-pydantic>=2.0.0
+pydantic>=2.0.0,<3
 python-slugify>=8.0.0
 thefuzz>=0.22.0
 tenacity>=8.2.0
