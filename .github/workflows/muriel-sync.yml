@@ -4,6 +4,8 @@ name: Muriel Art Sync
 # Public data.json + images — only WooCommerce secrets needed. Resumable (skips
 # products that already exist by SKU), so it can be re-run until complete.
 on:
+  schedule:
+    - cron: "0 4 * * 4"   # Thursday 04:00 UTC — its own weekly slot
   workflow_dispatch:
     inputs:
       limit:
