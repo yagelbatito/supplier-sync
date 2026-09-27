@@ -127,6 +127,49 @@ def _build_html(title, text, products, code, exp):
 </table></td></tr></table></body></html>"""
 
 
+def _story_html(title, code, exp, img_url, pct, key):
+    """A 1080×1920 Instagram-story card with a 'download image' button."""
+    proxied = f"/api/mail/img?key={_html.escape(key)}&url={_html.escape(img_url)}" if img_url else ""
+    return f"""<!doctype html><html dir=rtl lang=he><head><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1"><title>סטורי מבצע</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<style>
+html,body{{margin:0;background:#2b2823;font-family:Arial,sans-serif;text-align:center}}
+#wrap{{transform-origin:top center}}
+#story{{width:1080px;height:1920px;background:#F6F3EC;position:relative;overflow:hidden;box-sizing:border-box;padding:80px 70px;text-align:center}}
+.occ{{font-family:Georgia,serif;font-size:96px;color:#3E3A33;font-weight:bold;line-height:1.1;margin:20px 0 10px}}
+.sub{{font-size:40px;color:#5F5A50;margin-bottom:40px}}
+.imgbox{{width:940px;height:900px;margin:0 auto;border-radius:28px;overflow:hidden;background:#e9e3d6;box-shadow:0 20px 50px rgba(0,0,0,.15)}}
+.imgbox img{{width:100%;height:100%;object-fit:cover;display:block}}
+.coupon{{margin:56px auto 0;background:#A9812F;color:#fff;border-radius:24px;padding:46px 30px;width:820px}}
+.coupon .p{{font-size:52px;font-weight:bold}}
+.coupon .code{{font-size:110px;font-weight:bold;letter-spacing:8px;margin:10px 0}}
+.coupon .t{{font-size:40px;opacity:.92}}
+.foot{{position:absolute;bottom:70px;left:0;right:0;font-size:40px;color:#3E3A33}}
+#dl{{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9;background:#A9812F;color:#fff;border:0;padding:16px 30px;border-radius:10px;font-size:18px;font-weight:bold;cursor:pointer}}
+</style></head><body>
+<button id=dl onclick=dl()>⬇️ הורד תמונת סטורי</button>
+<div id=wrap><div id=story>
+  <div class=occ>{_html.escape(title or 'מבצע מיוחד')}</div>
+  <div class=sub>לזמן מוגבל בלבד</div>
+  <div class=imgbox>{f'<img crossorigin=anonymous src="{proxied}">' if proxied else ''}</div>
+  <div class=coupon>
+    <div class=p>{_html.escape(str(pct))}% הנחה · קוד קופון</div>
+    <div class=code>{_html.escape(code or '')}</div>
+    <div class=t>בתוקף עד {_html.escape(exp or '')}</div>
+  </div>
+  <div class=foot>סמדר בטיטו · עיצוב הבית · 053-3221955</div>
+</div></div>
+<script>
+function fit(){{var s=Math.min(window.innerWidth/1080,(window.innerHeight-60)/1920);
+ document.getElementById('wrap').style.transform='scale('+s+')';
+ document.body.style.height=(1920*s+60)+'px';}}
+window.onload=fit;window.onresize=fit;
+async function dl(){{let c=await html2canvas(document.getElementById('story'),{{scale:1,useCORS:true,backgroundColor:'#F6F3EC'}});
+ let a=document.createElement('a');a.download='story.png';a.href=c.toDataURL('image/png');a.click();}}
+</script></body></html>"""
+
+
 _PAGE = """<!doctype html><html dir=rtl lang=he><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
 <title>יצירת מייל דיוור</title>
 <style>body{font-family:Arial;background:#F6F3EC;margin:0;padding:20px;color:#3E3A33}
@@ -149,6 +192,7 @@ iframe{width:100%;height:520px;border:1px solid #ddd;border-radius:8px;margin-to
 <div class=msg id=msg></div>
 <iframe id=prev></iframe>
 <div id=actions style=display:none>
+<button onclick=storyC()>🖼️ צור סטורי לאינסטגרם</button>
 <label>מייל לבדיקה</label><input id=testmail placeholder="your@email.com">
 <button onclick=testC()>שלח מייל ניסיון אליי</button>
 <button class=gold onclick=sendC()>שלח לכולם ✉️</button>
@@ -164,9 +208,13 @@ async function createC(){msg('יוצר...');
    coupon_code:document.getElementById('code').value,percent:+document.getElementById('pct').value,
    days:+document.getElementById('days').value,urls})});
  let d=await r.json(); if(!r.ok){msg('שגיאה: '+(d.detail||'')); return;}
- CID=d.campaign_id; msg('נוצר! '+d.product_count+' מוצרים, קופון '+d.coupon_code+' (תוקף עד '+d.expires+'). בדוק בתצוגה למטה.');
+ window.D=d; CID=d.campaign_id; msg('נוצר! '+d.product_count+' מוצרים, קופון '+d.coupon_code+' (תוקף עד '+d.expires+'). בדוק בתצוגה למטה.');
  let f=document.getElementById('prev'); f.style.display='block'; f.srcdoc=d.html;
  document.getElementById('actions').style.display='block';}
+function storyC(){let d=window.D||{};
+ let u='/story?key='+encodeURIComponent(KEY)+'&t='+encodeURIComponent(d.title||'')+'&c='+encodeURIComponent(d.coupon_code||'')
+   +'&e='+encodeURIComponent(d.expires||'')+'&pct='+encodeURIComponent(d.percent||10)+'&img='+encodeURIComponent(d.image||'');
+ window.open(u,'_blank');}
 async function testC(){msg('שולח ניסיון...');
  let r=await fetch('/api/mail/test?key='+KEY,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({campaign_id:CID,email:document.getElementById('testmail').value})});
@@ -222,6 +270,7 @@ def register_mail_campaign_tool(app, orchestrator) -> None:
         mc.put(f"{mc.base}/campaigns/{cid}/content", json={"html": html_body}, timeout=40)
         logger.info(f"[mail] draft {cid} — {len(products)} products, coupon {code}")
         return {"campaign_id": cid, "coupon_code": code, "expires": exp,
+                "title": title, "percent": pct, "image": products[0]["image"],
                 "product_count": len(products), "html": html_body}
 
     @app.post("/api/mail/test")
@@ -249,3 +298,19 @@ def register_mail_campaign_tool(app, orchestrator) -> None:
         if r.status_code >= 300:
             raise HTTPException(status_code=400, detail=str(r.text)[:200])
         return {"ok": True}
+
+    @app.get("/api/mail/img")
+    def mail_img(url: str = "", key: str = ""):
+        _check(key)
+        from fastapi.responses import Response
+        try:
+            r = requests.get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+            return Response(content=r.content,
+                            media_type=r.headers.get("Content-Type", "image/jpeg"))
+        except Exception:
+            raise HTTPException(status_code=404, detail="image fetch failed")
+
+    @app.get("/story", response_class=HTMLResponse)
+    def story(key: str = "", t: str = "", c: str = "", e: str = "", img: str = "", pct: str = "10"):
+        _check(key)
+        return HTMLResponse(_story_html(t, c, e, img, pct, key))
