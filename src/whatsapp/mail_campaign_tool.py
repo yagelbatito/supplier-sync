@@ -128,28 +128,34 @@ def _build_html(title, text, products, code, exp):
 
 
 def _story_html(title, code, exp, img_url, pct, key):
-    """A 1080×1920 Instagram-story card with a 'download image' button."""
+    """A 1080×1920 Instagram-story card. Rendered once by html2canvas at full
+    size (NO CSS transform on the captured node — that caused doubled text), then
+    shown as a plain <img> the user downloads."""
     proxied = f"/api/mail/img?key={_html.escape(key)}&url={_html.escape(img_url)}" if img_url else ""
     return f"""<!doctype html><html dir=rtl lang=he><head><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>סטורי מבצע</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <style>
 html,body{{margin:0;background:#2b2823;font-family:Arial,sans-serif;text-align:center}}
-#wrap{{transform-origin:top center}}
-#story{{width:1080px;height:1920px;background:#F6F3EC;position:relative;overflow:hidden;box-sizing:border-box;padding:80px 70px;text-align:center}}
-.occ{{font-family:Georgia,serif;font-size:96px;color:#3E3A33;font-weight:bold;line-height:1.1;margin:20px 0 10px}}
-.sub{{font-size:40px;color:#5F5A50;margin-bottom:40px}}
-.imgbox{{width:940px;height:900px;margin:0 auto;border-radius:28px;overflow:hidden;background:#e9e3d6;box-shadow:0 20px 50px rgba(0,0,0,.15)}}
+#stage{{position:absolute;top:0;left:0;z-index:-1}}
+#story{{width:1080px;height:1920px;background:#F6F3EC;overflow:hidden;box-sizing:border-box;padding:80px 70px;text-align:center;position:relative}}
+.occ{{font-family:Georgia,serif;font-size:100px;color:#3E3A33;font-weight:bold;line-height:1.1;margin:16px 0 4px}}
+.sub{{font-size:42px;color:#5F5A50;margin-bottom:34px}}
+.imgbox{{width:940px;height:900px;margin:0 auto;border-radius:28px;overflow:hidden;background:#e9e3d6}}
 .imgbox img{{width:100%;height:100%;object-fit:cover;display:block}}
-.coupon{{margin:56px auto 0;background:#A9812F;color:#fff;border-radius:24px;padding:46px 30px;width:820px}}
-.coupon .p{{font-size:52px;font-weight:bold}}
-.coupon .code{{font-size:110px;font-weight:bold;letter-spacing:8px;margin:10px 0}}
+.coupon{{margin:54px auto 0;background:#A9812F;color:#fff;border-radius:24px;padding:44px 30px;width:820px}}
+.coupon .p{{font-size:50px;font-weight:bold}}
+.coupon .code{{font-size:104px;font-weight:bold;letter-spacing:6px;margin:12px 0}}
 .coupon .t{{font-size:40px;opacity:.92}}
-.foot{{position:absolute;bottom:70px;left:0;right:0;font-size:40px;color:#3E3A33}}
-#dl{{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9;background:#A9812F;color:#fff;border:0;padding:16px 30px;border-radius:10px;font-size:18px;font-weight:bold;cursor:pointer}}
+.foot{{position:absolute;bottom:66px;left:0;right:0;font-size:40px;color:#3E3A33}}
+#out{{max-width:100%;max-height:96vh;display:none}}
+#dl{{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:9;background:#A9812F;color:#fff;border:0;padding:16px 30px;border-radius:10px;font-size:18px;font-weight:bold;cursor:pointer;display:none}}
+#hint{{color:#EFE7D8;padding:40px;font-size:18px}}
 </style></head><body>
-<button id=dl onclick=dl()>⬇️ הורד תמונת סטורי</button>
-<div id=wrap><div id=story>
+<button id=dl>⬇️ הורד תמונת סטורי</button>
+<div id=hint>מכין את הסטורי…</div>
+<img id=out alt="story">
+<div id=stage><div id=story>
   <div class=occ>{_html.escape(title or 'מבצע מיוחד')}</div>
   <div class=sub>לזמן מוגבל בלבד</div>
   <div class=imgbox>{f'<img crossorigin=anonymous src="{proxied}">' if proxied else ''}</div>
@@ -161,12 +167,20 @@ html,body{{margin:0;background:#2b2823;font-family:Arial,sans-serif;text-align:c
   <div class=foot>סמדר בטיטו · עיצוב הבית · 053-3221955</div>
 </div></div>
 <script>
-function fit(){{var s=Math.min(window.innerWidth/1080,(window.innerHeight-60)/1920);
- document.getElementById('wrap').style.transform='scale('+s+')';
- document.body.style.height=(1920*s+60)+'px';}}
-window.onload=fit;window.onresize=fit;
-async function dl(){{let c=await html2canvas(document.getElementById('story'),{{scale:1,useCORS:true,backgroundColor:'#F6F3EC'}});
- let a=document.createElement('a');a.download='story.png';a.href=c.toDataURL('image/png');a.click();}}
+function gen(){{
+ html2canvas(document.getElementById('story'),{{scale:1,useCORS:true,backgroundColor:'#F6F3EC'}}).then(function(c){{
+   var url=c.toDataURL('image/png');
+   var out=document.getElementById('out'); out.src=url; out.style.display='inline-block';
+   var st=document.getElementById('stage'); if(st) st.remove();
+   document.getElementById('hint').style.display='none';
+   var dl=document.getElementById('dl'); dl.style.display='block';
+   dl.onclick=function(){{var a=document.createElement('a');a.download='story.png';a.href=url;a.click();}};
+ }});
+}}
+window.onload=function(){{
+ var im=document.querySelector('#story img');
+ if(im && !im.complete){{im.onload=gen; im.onerror=gen; setTimeout(gen,4000);}} else {{setTimeout(gen,200);}}
+}};
 </script></body></html>"""
 
 
