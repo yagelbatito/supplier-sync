@@ -240,12 +240,13 @@ def main():
         )
         prod.calculated_price = p["_price"]
         # Minimum order quantity: if ART only sells this in a pack / imposes a
-        # minimum, the owner wants a store minimum of 50% of it (floor), so a
-        # supplier pack of 25 → store minimum 12. Enforced on the storefront by
-        # the _min_order_qty meta + a Code-Snippets PHP hook (see art_min_qty snippet).
+        # minimum, the owner wants a store minimum of AT LEAST 50% of it, so we
+        # round UP: a supplier pack of 5 → store minimum 3, pack of 25 → 13.
+        # Enforced on the storefront by the _min_order_qty meta + a Code-Snippets
+        # PHP hook (see docs/art_min_qty_snippet.php).
         min_order = p.get("min_order", 0) or 0
         if min_order > 1:
-            prod.extra_meta["_min_order_qty"] = max(1, int(min_order // 2))
+            prod.extra_meta["_min_order_qty"] = max(1, (int(min_order) + 1) // 2)
         try:
             if existing:
                 # FAST path — only fix category/price/shipping; keep existing
