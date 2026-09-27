@@ -20,6 +20,8 @@ services:
         sync: false
       - key: WHATSAPP_ALLOWED_NUMBERS  # comma-separated, e.g. 972505766659,9725...
         sync: false
+      - key: PYTHON_VERSION           # pin: 3.14 pulls broken forks (httpx2, openai-3.x)
+        value: "3.11.9"
       - key: WHATSAPP_API_VERSION
         value: v21.0
       - key: OPENAI_API_KEY
