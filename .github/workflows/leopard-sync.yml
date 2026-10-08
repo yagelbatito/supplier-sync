@@ -5,8 +5,8 @@ name: Leopard Weekly Sync
 # the shared weekly-sync kept timing out on it. Resumable (fast-path skips
 # products that already exist), so re-running finishes any leftover.
 on:
-  schedule:
-    - cron: "0 2 * * 5"   # Friday 02:00 UTC — its own weekly slot
+  # Weekly schedule DISABLED — owner removed Leopard from the store (supplier
+  # also enabled:false in suppliers.json). Manual dispatch only, if ever re-added.
   workflow_dispatch:
     inputs:
       dry_run:
