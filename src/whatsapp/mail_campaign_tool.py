@@ -306,23 +306,23 @@ def register_mail_campaign_tool(app, orchestrator) -> None:
     @app.get("/api/mail/collections")
     def mail_collections(key: str = ""):
         _check(key)
-        # product tags = named collections to target in one click
-        out, page = [], 1
-        while True:
-            r = None
-            try:
-                r = wc.get("products/tags", params={"per_page": 100, "page": page,
-                                                    "orderby": "count", "order": "desc",
-                                                    "_fields": "id,name,count"})
-            except Exception:
-                r = None
-            if not r:
-                break
-            out.extend({"id": t["id"], "name": t["name"], "count": t.get("count", 0)}
-                       for t in r if t.get("count", 0) > 0)
-            if len(r) < 100:
-                break
-            page += 1
+        # Curated collections from config/collections.json — the store's product-tag
+        # LISTING endpoint is pathologically slow (times out), so we never enumerate
+        # tags live; we keep a small hand-maintained list of {name, tag_id, count}.
+        # Fetching products BY a known tag id (at create time) is fast.
+        import json as _json
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+                            "config", "collections.json")
+        out = []
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = _json.load(f)
+            for c in data:
+                if c.get("tag_id"):
+                    out.append({"id": c["tag_id"], "name": c.get("name", ""),
+                                "count": c.get("count", 0)})
+        except Exception as exc:
+            logger.warning(f"[mail] collections file read failed: {exc}")
         return {"collections": out}
 
     @app.post("/api/mail/create")
