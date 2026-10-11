@@ -62,6 +62,11 @@ def _money(v):
         return ""
 
 
+def _card(p):
+    return {"id": p["id"], "name": p.get("name", ""), "price": p.get("price"),
+            "url": p.get("permalink") or "", "image": (p.get("images") or [{}])[0].get("src", "")}
+
+
 def _resolve(wc, urls):
     """Product URLs → [{id,name,price,url,image}] (keeps the given order)."""
     out = []
@@ -74,10 +79,28 @@ def _resolve(wc, urls):
         except Exception:
             r = None
         if r:
-            p = r[0]
-            out.append({"id": p["id"], "name": p.get("name", ""),
-                        "price": p.get("price"), "url": p.get("permalink") or u,
-                        "image": (p.get("images") or [{}])[0].get("src", "")})
+            c = _card(r[0])
+            c["url"] = c["url"] or u
+            out.append(c)
+    return out
+
+
+def _by_tag(wc, tag_id):
+    """All published products carrying a product tag → cards (the 'collection')."""
+    out, page = [], 1
+    while True:
+        r = None
+        try:
+            r = wc.get("products", params={"tag": tag_id, "status": "publish", "per_page": 100,
+                                           "page": page, "_fields": "id,name,price,permalink,images"})
+        except Exception:
+            r = None
+        if not r:
+            break
+        out.extend(_card(p) for p in r)
+        if len(r) < 100:
+            break
+        page += 1
     return out
 
 
@@ -94,10 +117,8 @@ def _coupon(wc, code, pct, days, product_ids):
     return wc.post("coupons", payload).get("id"), exp
 
 
-def _build_html(title, text, products, code, exp):
-    cards = []
-    for p in products:
-        cards.append(f"""
+def _big_card(p):
+    return f"""
       <tr><td style="padding:0 18px 24px 18px;">
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FFFDF9;border:1px solid #E1D6C2;border-radius:8px;overflow:hidden;">
           <tr><td><a href="{_html.escape(p['url'])}" target="_blank"><img src="{_html.escape(p['image'])}" width="562" alt="{_html.escape(p['name'])}" style="display:block;width:100%;max-width:562px;height:auto;border:0;"></a></td></tr>
@@ -107,7 +128,35 @@ def _build_html(title, text, products, code, exp):
             <a href="{_html.escape(p['url'])}" target="_blank" style="display:inline-block;margin-top:12px;background:#3E3A33;color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-size:15px;padding:10px 22px;border-radius:6px;">לצפייה במוצר ›</a>
           </td></tr>
         </table>
-      </td></tr>""")
+      </td></tr>"""
+
+
+def _mini_cell(p):
+    return f"""<td width="50%" valign="top" style="padding:0 9px 18px 9px;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#FFFDF9;border:1px solid #E1D6C2;border-radius:8px;overflow:hidden;">
+          <tr><td><a href="{_html.escape(p['url'])}" target="_blank"><img src="{_html.escape(p['image'])}" width="276" alt="{_html.escape(p['name'])}" style="display:block;width:100%;max-width:276px;height:auto;border:0;"></a></td></tr>
+          <tr><td align="right" dir="rtl" style="padding:12px 14px;">
+            <div style="font-family:Arial,sans-serif;font-size:16px;font-weight:bold;color:#3E3A33;line-height:1.3;">{_html.escape(p['name'])}</div>
+            <div style="font-family:Arial,sans-serif;font-size:15px;color:#A9812F;padding-top:4px;">{_money(p['price'])}</div>
+            <a href="{_html.escape(p['url'])}" target="_blank" style="display:inline-block;margin-top:9px;background:#3E3A33;color:#fff;text-decoration:none;font-family:Arial,sans-serif;font-size:13px;padding:8px 16px;border-radius:6px;">לצפייה ›</a>
+          </td></tr>
+        </table></td>"""
+
+
+def _build_html(title, text, products, code, exp, pct=10):
+    # few products → big single-column cards; a collection → 2-column grid
+    if len(products) > 4:
+        cells = [_mini_cell(p) for p in products]
+        rows = []
+        for i in range(0, len(cells), 2):
+            pair = cells[i:i + 2]
+            if len(pair) == 1:
+                pair.append('<td width="50%"></td>')
+            rows.append("<tr>" + "".join(pair) + "</tr>")
+        cards = (f'<tr><td style="padding:0 9px;"><table role="presentation" width="100%" '
+                 f'cellspacing="0" cellpadding="0" border="0">{"".join(rows)}</table></td></tr>')
+    else:
+        cards = "".join(_big_card(p) for p in products)
     text_html = _html.escape(text).replace("\n", "<br>")
     return f"""<!doctype html><html dir="rtl" lang="he"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;background:#F6F3EC;">
@@ -117,12 +166,12 @@ def _build_html(title, text, products, code, exp):
   <tr><td align="right" dir="rtl" style="font-family:Arial,sans-serif;font-size:17px;line-height:27px;color:#5F5A50;padding:24px 24px 8px 24px;">{text_html}</td></tr>
   <tr><td align="center" style="padding:16px 18px 24px 18px;">
      <table role="presentation" width="100%" style="background:#A9812F;border-radius:8px;"><tr><td align="center" dir="rtl" style="padding:18px;font-family:Arial,sans-serif;color:#fff;">
-       <div style="font-size:16px;">קוד קופון — 10% הנחה על המוצרים במבצע</div>
+       <div style="font-size:16px;">קוד קופון — {pct}% הנחה על המוצרים במבצע</div>
        <div style="font-size:30px;font-weight:bold;letter-spacing:3px;padding:6px 0;">{_html.escape(code)}</div>
        <div style="font-size:13px;opacity:.9;">בתוקף עד {exp}</div>
      </td></tr></table>
   </td></tr>
-  {''.join(cards)}
+  {cards}
   <tr><td align="center" style="background:#3E3A33;color:#CFC7B8;font-family:Arial,sans-serif;font-size:13px;padding:22px;">סמדר בטיטו — עיצוב הבית · 053-3221955</td></tr>
 </table></td></tr></table></body></html>"""
 
@@ -201,7 +250,9 @@ iframe{width:100%;height:520px;border:1px solid #ddd;border-radius:8px;margin-to
 <div class=row><div><label>קוד קופון</label><input id=code placeholder="SUKKOT10"></div>
 <div><label>אחוז הנחה</label><input id=pct type=number value=10></div>
 <div><label>תוקף (ימים)</label><input id=days type=number value=7></div></div>
-<label>קישורי מוצרים (אחד בכל שורה)</label><textarea id=urls placeholder="https://smadarbetitohome.co.il/product/..."></textarea>
+<label>קולקציה שלמה (בחירה אחת מחילה את הקופון על כל המוצרים בה)</label>
+<select id=coll><option value="">— בלי קולקציה —</option></select>
+<label>או קישורי מוצרים ספציפיים (אחד בכל שורה)</label><textarea id=urls placeholder="https://smadarbetitohome.co.il/product/..."></textarea>
 <button onclick=createC()>צור מבצע (טיוטה)</button>
 <div class=msg id=msg></div>
 <iframe id=prev></iframe>
@@ -215,12 +266,17 @@ iframe{width:100%;height:520px;border:1px solid #ddd;border-radius:8px;margin-to
 <script>
 const KEY=new URLSearchParams(location.search).get('key')||'';let CID='';
 const msg=(t)=>{let m=document.getElementById('msg');m.style.display='block';m.textContent=t;};
+async function loadColls(){try{let r=await fetch('/api/mail/collections?key='+KEY);let d=await r.json();
+ let sel=document.getElementById('coll');(d.collections||[]).forEach(c=>{let o=document.createElement('option');
+  o.value=c.id;o.textContent=c.name+' ('+c.count+' מוצרים)';sel.appendChild(o);});}catch(e){}}
+loadColls();
 async function createC(){msg('יוצר...');
  let urls=document.getElementById('urls').value.split('\\n').map(s=>s.trim()).filter(Boolean);
+ let tag_id=document.getElementById('coll').value||null;
  let r=await fetch('/api/mail/create?key='+KEY,{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({title:document.getElementById('title').value,text:document.getElementById('text').value,
    coupon_code:document.getElementById('code').value,percent:+document.getElementById('pct').value,
-   days:+document.getElementById('days').value,urls})});
+   days:+document.getElementById('days').value,urls,tag_id})});
  let d=await r.json(); if(!r.ok){msg('שגיאה: '+(d.detail||'')); return;}
  window.D=d; CID=d.campaign_id; msg('נוצר! '+d.product_count+' מוצרים, קופון '+d.coupon_code+' (תוקף עד '+d.expires+'). בדוק בתצוגה למטה.');
  let f=document.getElementById('prev'); f.style.display='block'; f.srcdoc=d.html;
@@ -247,6 +303,28 @@ def register_mail_campaign_tool(app, orchestrator) -> None:
         _check(key)
         return HTMLResponse(_PAGE)
 
+    @app.get("/api/mail/collections")
+    def mail_collections(key: str = ""):
+        _check(key)
+        # product tags = named collections to target in one click
+        out, page = [], 1
+        while True:
+            r = None
+            try:
+                r = wc.get("products/tags", params={"per_page": 100, "page": page,
+                                                    "orderby": "count", "order": "desc",
+                                                    "_fields": "id,name,count"})
+            except Exception:
+                r = None
+            if not r:
+                break
+            out.extend({"id": t["id"], "name": t["name"], "count": t.get("count", 0)}
+                       for t in r if t.get("count", 0) > 0)
+            if len(r) < 100:
+                break
+            page += 1
+        return {"collections": out}
+
     @app.post("/api/mail/create")
     async def mail_create(body: dict, key: str = ""):
         _check(key)
@@ -257,11 +335,19 @@ def register_mail_campaign_tool(app, orchestrator) -> None:
         code = (str(body.get("coupon_code") or "").strip()
                 or "PROMO" + dt.date.today().strftime("%m%d"))
         urls = [u for u in (body.get("urls") or []) if u]
-        products = _resolve(wc, urls)
+        tag_id = body.get("tag_id")
+        products = _by_tag(wc, int(tag_id)) if tag_id else []
+        products += _resolve(wc, urls)
+        # de-dupe by id, keep order
+        seen, uniq = set(), []
+        for p in products:
+            if p["id"] not in seen:
+                seen.add(p["id"]); uniq.append(p)
+        products = uniq
         if not products:
-            raise HTTPException(status_code=400, detail="no products resolved from links")
+            raise HTTPException(status_code=400, detail="no products (pick a collection or paste links)")
         _cid, exp = _coupon(wc, code, pct, days, [p["id"] for p in products])
-        html_body = _build_html(title, text, products, code, exp)
+        html_body = _build_html(title, text, products, code, exp, pct)
 
         mc = _mc()
         list_id = os.getenv("MAILCHIMP_LIST_ID", "").strip()
