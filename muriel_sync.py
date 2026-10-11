@@ -145,6 +145,26 @@ def main():
     sess = requests.Session()
     sess.headers["User-Agent"] = UA
 
+    # Warm the existing-SKU set ONCE (the store has no SKU search, and a per-
+    # product lookup made each run far too slow to finish in the job timeout).
+    existing_skus = set()
+    if APPLY:
+        page = 1
+        while True:
+            b = None
+            for _ in range(6):
+                b = c.get("products", params={"per_page": 100, "page": page,
+                                              "status": "any", "_fields": "sku"})
+                if b is not None:
+                    break
+            if not b:
+                break
+            existing_skus.update(p.get("sku", "") for p in b if p.get("sku"))
+            if len(b) < 100:
+                break
+            page += 1
+        print(f"warmed SKU cache: {len(existing_skus)} existing products", flush=True)
+
     consumed = set()
     stats = {"variable": 0, "simple": 0, "skip_novalue": 0, "skip_route": 0,
              "skip_watermark": 0, "skip_img": 0, "exists": 0, "created": 0, "failed": 0}
@@ -190,13 +210,10 @@ def main():
             created += 1
             continue
 
-        # skip if already created
-        try:
-            if c.get("products", params={"sku": sku, "_fields": "id"}):
-                stats["exists"] += 1
-                continue
-        except Exception:
-            pass
+        # skip if already created (instant set lookup, warmed above)
+        if sku in existing_skus:
+            stats["exists"] += 1
+            continue
         if not img_ok(sess, img):            # owner rule ג
             stats["skip_img"] += 1
             continue
