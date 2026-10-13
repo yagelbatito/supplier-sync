@@ -6,6 +6,7 @@ import datetime as _dt
 import os
 from typing import Optional
 
+from src.core.blocklist import is_blocked
 from src.core.constants import (
     META_AI_GENERATED,
     META_CALCULATED_PRICE,
@@ -25,7 +26,6 @@ from src.core.constants import (
     STATUS_PUBLISH,
     STOCK_OUT,
 )
-from src.core.blocklist import is_blocked
 from src.core.logger import get_logger
 from src.core.utils import now_iso
 from src.models.product import SupplierProduct

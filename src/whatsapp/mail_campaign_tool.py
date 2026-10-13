@@ -342,7 +342,8 @@ def register_mail_campaign_tool(app, orchestrator) -> None:
         seen, uniq = set(), []
         for p in products:
             if p["id"] not in seen:
-                seen.add(p["id"]); uniq.append(p)
+                seen.add(p["id"])
+                uniq.append(p)
         products = uniq
         if not products:
             raise HTTPException(status_code=400, detail="no products (pick a collection or paste links)")

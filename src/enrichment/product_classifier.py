@@ -19,8 +19,8 @@ import json
 from dataclasses import dataclass
 from typing import Optional
 
-from src.enrichment.keyword_rules import classify_by_rules
 from src.core.logger import get_logger
+from src.enrichment.keyword_rules import classify_by_rules
 
 logger = get_logger(__name__)
 
