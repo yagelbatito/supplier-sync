@@ -281,7 +281,8 @@ class WhatsAppOrchestrator:
         "📦 *סימון אזל* — `אזל <שם>`\n"
         "🗑️ *מחיקה* — `מחק <שם>`\n"
         "♻️ *ניקוי מטמון* — `נקה מטמון <שם>`\n"
-        "✉️ *מייל דיוור/מבצע* — `דיוור`\n\n"
+        "✉️ *מייל דיוור/מבצע* — `דיוור`\n"
+        "🛒 *הצעות עגלה* — `הוסף להצעות העגלה <שם/קישור> ב-20%` · `הסר מהצעות העגלה <שם>` · `מה יש בהצעות העגלה?`\n\n"
         "הקלד *תפריט* בכל רגע כדי לראות שוב את הרשימה."
     )
 
@@ -303,6 +304,166 @@ class WhatsAppOrchestrator:
                f"{url}")
         self.wa.send_text(from_number, msg, reply_to_msg_id=message_id)
 
+    # ── Cart-offers management (site meta `smadar_cart_offer`) ───────
+    # The store shows up to 12 in-stock products in the "הצעות בלעדיות למי שהגיע
+    # לעגלה" area, each with a per-product discount (smadar_cart_offer_pct, default
+    # 15%). The bot only toggles the meta flags — the site renders the rest.
+    SMADAR_OFFERS_PATH = "/wp-json/smadar/v1/cart-offers"
+
+    def _store_base(self) -> str:
+        import os as _os
+        return (_os.getenv("WOOCOMMERCE_URL", "") or getattr(self.wc_client, "url", "")
+                or "https://smadarbetitohome.co.il").rstrip("/")
+
+    def _cart_offers_fetch(self) -> Optional[list]:
+        """Current cart-offer products from the site endpoint (incl. out-of-stock,
+        each with in_stock/price/offer_price/pct). None on failure."""
+        import requests
+        try:
+            r = requests.get(self._store_base() + self.SMADAR_OFFERS_PATH,
+                             headers={"User-Agent": "Mozilla/5.0", "Accept": "application/json"},
+                             timeout=25)
+            if r.status_code == 200:
+                return r.json()
+        except Exception as exc:
+            logger.error(f"[WA] cart-offers fetch failed: {exc}")
+        return None
+
+    @staticmethod
+    def _parse_offer_pct(text: str):
+        """Pull an optional discount percent (1–90) out of the text, returning
+        (pct|None, text_without_pct). Accepts 'ב-20%', '20%', 'ב-20 אחוז'."""
+        m = re.search(r"ב[-\s]?(\d{1,2})\s*%|(\d{1,2})\s*%|ב[-\s]?(\d{1,2})\s*אחוז|(\d{1,2})\s*אחוז", text)
+        if m:
+            val = next((g for g in m.groups() if g), None)
+            try:
+                p = int(val)
+            except (TypeError, ValueError):
+                return None, text
+            if 1 <= p <= 90:
+                return p, (text[:m.start()] + text[m.end():]).strip(" :,-–\t")
+        return None, text
+
+    def _resolve_cart_target(self, from_number: str, query: str, message_id: str, verb: str) -> Optional[dict]:
+        """Resolve a product from a /product/<slug> link or a name (per the spec:
+        decode the slug and look it up; otherwise fall back to name/SKU search)."""
+        query = (query or "").strip()
+        if not query:
+            self.wa.send_text(from_number, f"כתוב שם מוצר או קישור {verb}.", reply_to_msg_id=message_id)
+            return None
+        if "/product/" in query or query.startswith("http"):
+            from urllib.parse import unquote
+            m = re.search(r"/product/([^/?#]+)", query)
+            if m:
+                slug = unquote(m.group(1))
+                try:
+                    res = self.wc_client.get("products", params={"slug": slug})
+                except Exception:
+                    res = None
+                if res:
+                    return res[0]
+                self.wa.send_text(from_number, "🔍 לא נמצא מוצר לקישור הזה. שלח קישור תקין או שם מוצר.", reply_to_msg_id=message_id)
+                return None
+        return self._resolve_one(from_number, query, message_id, verb)
+
+    @staticmethod
+    def _offer_price(p: dict, pct: int) -> int:
+        try:
+            base = float(p.get("regular_price") or p.get("price") or 0)
+        except (TypeError, ValueError):
+            base = 0
+        return int(round(base * (1 - pct / 100.0))) if base else 0
+
+    def _cmd_cart_offer_add(self, from_number: str, args: str, message_id: str) -> None:
+        pct, name = self._parse_offer_pct(args)
+        p = self._resolve_cart_target(from_number, name, message_id, "להוסיף להצעות העגלה")
+        if not p:
+            return
+        # enforce the max-12 cap (count currently-marked products)
+        offers = self._cart_offers_fetch()
+        if offers is not None:
+            ids = {str(o.get("id")) for o in offers}
+            if str(p["id"]) not in ids and len(offers) >= 12:
+                self.wa.send_text(
+                    from_number,
+                    "⚠️ כבר יש 12 מוצרים בהצעות העגלה (המקסימום). הסר אחד לפני שתוסיף חדש.",
+                    reply_to_msg_id=message_id)
+                return
+        meta = [{"key": "smadar_cart_offer", "value": "yes"}]
+        if pct:
+            meta.append({"key": "smadar_cart_offer_pct", "value": str(pct)})
+        try:
+            self.wc_client.put(f"products/{p['id']}", {"meta_data": meta})
+        except Exception as exc:
+            logger.error(f"[WA] cart-offer add failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ ההוספה נכשלה. נסה שוב.", reply_to_msg_id=message_id)
+            return
+        eff = pct or 15
+        reg = p.get("regular_price") or p.get("price") or "?"
+        self.wa.send_text(
+            from_number,
+            f'🛒 "{p.get("name","")}" נוסף להצעות העגלה.\n'
+            f'מחיר רגיל: {reg} ₪\n'
+            f'מחיר הצעה ({eff}%): {self._offer_price(p, eff)} ₪',
+            reply_to_msg_id=message_id)
+
+    def _cmd_cart_offer_remove(self, from_number: str, args: str, message_id: str) -> None:
+        p = self._resolve_cart_target(from_number, args, message_id, "להסיר מהצעות העגלה")
+        if not p:
+            return
+        try:
+            self.wc_client.put(f"products/{p['id']}", {"meta_data": [{"key": "smadar_cart_offer", "value": "no"}]})
+        except Exception as exc:
+            logger.error(f"[WA] cart-offer remove failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ ההסרה נכשלה. נסה שוב.", reply_to_msg_id=message_id)
+            return
+        self.wa.send_text(
+            from_number,
+            f'🛒 "{p.get("name","")}" הוסר מהצעות העגלה (חזר למחיר רגיל).',
+            reply_to_msg_id=message_id)
+
+    def _cmd_cart_offer_pct(self, from_number: str, text: str, message_id: str) -> None:
+        m = re.match(r"^(?:שנה|עדכן)\s+הנחה\s+ל?[-\s]?\s*(.+?)\s+ל[-\s]?\s*(\d{1,2})\s*%?\s*(?:אחוז)?$", text)
+        if not m:
+            self.wa.send_text(
+                from_number,
+                "שימוש: `שנה הנחה ל-<שם מוצר> ל-<אחוז>`\nלמשל: `שנה הנחה ל-כיסא בר פוף ל-20`",
+                reply_to_msg_id=message_id)
+            return
+        name, pct = m.group(1).strip(), int(m.group(2))
+        if not (1 <= pct <= 90):
+            self.wa.send_text(from_number, "האחוז חייב להיות בין 1 ל-90.", reply_to_msg_id=message_id)
+            return
+        p = self._resolve_cart_target(from_number, name, message_id, "לעדכן הנחה")
+        if not p:
+            return
+        try:
+            self.wc_client.put(f"products/{p['id']}", {"meta_data": [{"key": "smadar_cart_offer_pct", "value": str(pct)}]})
+        except Exception as exc:
+            logger.error(f"[WA] cart-offer pct failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון ההנחה נכשל. נסה שוב.", reply_to_msg_id=message_id)
+            return
+        self.wa.send_text(
+            from_number,
+            f'🛒 ההנחה ל"{p.get("name","")}" עודכנה ל-{pct}% (מחיר הצעה: {self._offer_price(p, pct)} ₪).',
+            reply_to_msg_id=message_id)
+
+    def _cmd_cart_offers_list(self, from_number: str, message_id: str) -> None:
+        offers = self._cart_offers_fetch()
+        if offers is None:
+            self.wa.send_text(from_number, "⚠️ לא הצלחתי לקרוא את הצעות העגלה כרגע.", reply_to_msg_id=message_id)
+            return
+        if not offers:
+            self.wa.send_text(from_number, "🛒 אין כרגע מוצרים בהצעות העגלה.", reply_to_msg_id=message_id)
+            return
+        lines = [f"🛒 *הצעות העגלה* ({len(offers)}/12):"]
+        for o in offers:
+            tag = "" if o.get("in_stock", True) else "  ⚠️ אזל (לא מוצג)"
+            lines.append(
+                f'• {o.get("name","")} — {o.get("offer_price","?")} ₪ '
+                f'(היה {o.get("price","?")}, {o.get("pct","?")}%){tag}')
+        self.wa.send_text(from_number, "\n".join(lines), reply_to_msg_id=message_id)
+
     def _handle_command_or_query(self, from_number: str, body: str, message_id: str) -> None:
         text = (body or "").strip()
         if not text:
@@ -311,6 +472,23 @@ class WhatsAppOrchestrator:
         # show the command menu on request
         if text in ("תפריט", "עזרה", "פקודות", "menu", "Menu", "help", "?", "עזרא"):
             self._send_menu(from_number, message_id)
+            return
+        # cart offers — checked BEFORE the generic הסר/מחק/שנה handlers below so
+        # "הסר מהצעות העגלה" isn't swallowed by the delete command.
+        if text.replace("?", "").strip() in ("מה יש בהצעות העגלה", "מה בהצעות העגלה",
+                                              "הצעות העגלה", "הצעות עגלה"):
+            self._cmd_cart_offers_list(from_number, message_id)
+            return
+        for kw in ("הוסף להצעות העגלה", "הוסף להצעות עגלה", "הוסף לעגלת הצעות"):
+            if text.startswith(kw):
+                self._cmd_cart_offer_add(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        for kw in ("הסר מהצעות העגלה", "הסר מהצעות עגלה", "הסר מהעגלה"):
+            if text.startswith(kw):
+                self._cmd_cart_offer_remove(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
+                return
+        if text.startswith("שנה הנחה") or text.startswith("עדכן הנחה"):
+            self._cmd_cart_offer_pct(from_number, text, message_id)
             return
         # management: description — append / replace a sentence (before others,
         # so "תיאור" text isn't swallowed by the product-lookup fallback)
