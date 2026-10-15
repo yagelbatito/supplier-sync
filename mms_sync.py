@@ -4,7 +4,8 @@ M.M.S → store sync.
 
 Source: a Dropbox folder of product images with the data burned into a bottom
 banner (src/suppliers/mms_supplier.py OCRs + crops each). Price = banner price
-×1.7, per-product name classification into the store's categories, dimensions
+×1.8 base (a daily job alternates existing prices x1.80/x1.85), per-product name
+classification into the store's categories, dimensions
 kept in the description, the clean (banner-removed) image uploaded to WP media,
 supplier name "M.M.S" stored only in meta next to the SKU. Upsert by SKU.
 
@@ -42,7 +43,10 @@ from src.woocommerce.product_service import ProductService
 
 SUPPLIER_NAME = "M.M.S"
 SKU_PREFIX = "MMS"
-PRICE_MULT = 1.7
+# Base multiplier for new/Monday-synced products. A daily job (mms-daily-price.yml)
+# then alternates existing M.M.S prices between x1.80 and x1.85, so this is the low
+# end of that band — a freshly-synced product is never above the daily price.
+PRICE_MULT = 1.8
 REVIEW_FALLBACK_CAT = "מוצרים נוספים"
 MMS_HINTS = CLASSIFIER_HINTS + [
     "תמונה / קנבס / תמונה ממוסגרת → תמונות קיר.",
@@ -128,7 +132,7 @@ def main():
     print("\n── category distribution ──", flush=True)
     for t, n in dist.most_common():
         print(f"  {n:4}  {t}", flush=True)
-    print("\n── samples (name | banner→×1.7 | category | dims) ──", flush=True)
+    print("\n── samples (name | banner→×1.8 | category | dims) ──", flush=True)
     for sku, p in list(by_sku.items())[:12]:
         print(f"  {p['name'][:26]:<26} {p['price']:>6.0f}→{p['_price']:>6} | {p['_target']} | {p['dimensions']}", flush=True)
     print(f"\n=== SUMMARY: products={len(by_sku)} classified={len(by_sku)-len(needs_review)} "
