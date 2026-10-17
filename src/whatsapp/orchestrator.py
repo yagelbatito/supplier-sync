@@ -473,22 +473,24 @@ class WhatsAppOrchestrator:
         if text in ("תפריט", "עזרה", "פקודות", "menu", "Menu", "help", "?", "עזרא"):
             self._send_menu(from_number, message_id)
             return
-        # cart offers — checked BEFORE the generic הסר/מחק/שנה handlers below so
-        # "הסר מהצעות העגלה" isn't swallowed by the delete command.
-        if text.replace("?", "").strip() in ("מה יש בהצעות העגלה", "מה בהצעות העגלה",
-                                              "הצעות העגלה", "הצעות עגלה"):
-            self._cmd_cart_offers_list(from_number, message_id)
-            return
-        for kw in ("הוסף להצעות העגלה", "הוסף להצעות עגלה", "הוסף לעגלת הצעות"):
+        # cart offers — add/remove/pct are matched FIRST (they also contain the
+        # words "הצעות"/"עגלה"), then any other mention of cart offers is treated
+        # as the "list" query, so almost any phrasing works.
+        for kw in ("הוסף להצעות העגלה", "הוסף להצעות עגלה", "הוסף לעגלת הצעות", "הוסף להצעה"):
             if text.startswith(kw):
                 self._cmd_cart_offer_add(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
-        for kw in ("הסר מהצעות העגלה", "הסר מהצעות עגלה", "הסר מהעגלה"):
+        for kw in ("הסר מהצעות העגלה", "הסר מהצעות עגלה", "הסר מהעגלה", "הסר מההצעות"):
             if text.startswith(kw):
                 self._cmd_cart_offer_remove(from_number, text[len(kw):].strip(" :,-–\t"), message_id)
                 return
         if text.startswith("שנה הנחה") or text.startswith("עדכן הנחה"):
             self._cmd_cart_offer_pct(from_number, text, message_id)
+            return
+        # any other mention of cart offers → list them
+        _st = text.replace("?", "").strip()
+        if "הצעות" in _st and ("עגל" in _st or "עגלה" in _st):
+            self._cmd_cart_offers_list(from_number, message_id)
             return
         # management: description — append / replace a sentence (before others,
         # so "תיאור" text isn't swallowed by the product-lookup fallback)
