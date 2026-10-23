@@ -1,0 +1,4 @@
+{
+  "_comment": "M.M.S OCR price fixes. Key = store SKU (MMS-<id>), value = FINAL sell price in ₪. Both mms_sync.py (weekly) and mms_reprice.py (daily) force this price and skip the OCR banner x multiplier, so a misread banner can't reset it. Remove an entry to let the OCR price take over again.",
+  "MMS-60": 1600
+}

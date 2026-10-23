@@ -47,6 +47,56 @@ SKU_PREFIX = "MMS"
 # then alternates existing M.M.S prices between x1.80 and x1.85, so this is the low
 # end of that band — a freshly-synced product is never above the daily price.
 PRICE_MULT = 1.8
+
+
+def _load_price_overrides():
+    """SKU -> fixed final price, for products whose banner OCR is wrong. Both this
+    sync and mms_reprice honour it so a misread banner can't reset the price."""
+    import json as _json
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "mms_price_overrides.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return {k: float(v) for k, v in _json.load(f).items() if k.startswith("MMS-")}
+    except Exception:
+        return {}
+
+
+PRICE_OVERRIDES = _load_price_overrides()
+
+
+def _load_exclusions():
+    """SKU -> resume date (ISO). While today < resume date the sync leaves the
+    product completely alone (it stays drafted/off-sale). Empty/invalid date =
+    indefinite. Lets the owner pull a product for a few weeks without it being
+    re-published or re-priced by the weekly/daily jobs."""
+    import json as _json
+    from datetime import date as _date
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config", "mms_excluded.json")
+    out = {}
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = _json.load(f)
+    except Exception:
+        return out
+    for k, v in raw.items():
+        if not k.startswith("MMS-"):
+            continue
+        try:
+            out[k] = _date.fromisoformat(str(v))
+        except Exception:
+            out[k] = None
+    return out
+
+
+EXCLUSIONS = _load_exclusions()
+
+
+def is_excluded(sku):
+    from datetime import date as _date
+    if sku not in EXCLUSIONS:
+        return False
+    until = EXCLUSIONS[sku]
+    return until is None or _date.today() < until
 REVIEW_FALLBACK_CAT = "מוצרים נוספים"
 MMS_HINTS = CLASSIFIER_HINTS + [
     "תמונה / קנבס / תמונה ממוסגרת → תמונות קיר.",
@@ -155,9 +205,13 @@ def main():
         if p.get("sku"):
             product_svc._sku_cache[p["sku"]] = p
 
-    created = updated = failed = 0
+    created = updated = failed = excluded = 0
     for src_sku, p in by_sku.items():
         sku = f"{SKU_PREFIX}-{src_sku}"
+        # owner pulled this SKU for a while — leave it untouched (stays off-sale)
+        if is_excluded(sku):
+            excluded += 1
+            continue
         existing = product_svc.find_by_sku(sku)
         cat_ids = cat_svc.resolve_list(p["_target"])
         ship = shipping_map.get(p["_target"], "")
@@ -171,6 +225,12 @@ def main():
             images=[], status="publish",
         )
         prod.calculated_price = p["_price"]
+        # OCR price fix: force a corrected final price for known-bad SKUs so a
+        # misread banner never resets it (keeps original/calculated meta sane too).
+        _ov = PRICE_OVERRIDES.get(sku)
+        if _ov is not None:
+            prod.price = _ov
+            prod.calculated_price = _ov
         try:
             if existing:
                 prod.ai_generated = False
@@ -197,7 +257,7 @@ def main():
             failed += 1
             print(f"   FAIL [{sku}] {p['name'][:26]}: {str(exc)[:70]}", flush=True)
 
-    print(f"\n=== APPLIED. created={created} updated={updated} failed={failed} ===", flush=True)
+    print(f"\n=== APPLIED. created={created} updated={updated} failed={failed} excluded={excluded} ===", flush=True)
 
 
 if __name__ == "__main__":

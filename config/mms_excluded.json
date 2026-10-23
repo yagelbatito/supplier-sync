@@ -1,0 +1,4 @@
+{
+  "_comment": "M.M.S products temporarily pulled from sale. Key = store SKU (MMS-<id>), value = resume date (YYYY-MM-DD). Until that date the weekly sync and daily reprice leave the product completely alone so it stays drafted/off-sale. On/after the date it resumes normally (re-published + priced, honouring any entry in mms_price_overrides.json). Remove an entry to end the exclusion early.",
+  "MMS-60": "2026-11-13"
+}

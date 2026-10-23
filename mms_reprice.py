@@ -33,6 +33,32 @@ APPLY = "--apply" in sys.argv
 NEW_MULT = next((float(a.split("=")[1]) for a in sys.argv if a.startswith("--mult=")), 1.8)
 
 
+def _load_json_map(fname):
+    import json as _json
+    import os as _os
+    path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "config", fname)
+    try:
+        with open(path, encoding="utf-8") as f:
+            return {k: v for k, v in _json.load(f).items() if k.startswith("MMS-")}
+    except Exception:
+        return {}
+
+
+PRICE_OVERRIDES = {k: float(v) for k, v in _load_json_map("mms_price_overrides.json").items()}
+_EXCL_RAW = _load_json_map("mms_excluded.json")
+
+
+def _excluded(sku):
+    """True while the SKU is pulled from sale (today < resume date)."""
+    from datetime import date as _date
+    if sku not in _EXCL_RAW:
+        return False
+    try:
+        return _date.today() < _date.fromisoformat(str(_EXCL_RAW[sku]))
+    except Exception:
+        return True  # no/invalid date = indefinite
+
+
 def meta_get(p, key):
     for m in p.get("meta_data", []):
         if m.get("key") == key:
@@ -46,7 +72,8 @@ def main():
                           consumer_secret=s.woocommerce_secret, wp_user=s.wp_user,
                           wp_app_password=s.wp_app_password, verify_ssl=s.verify_ssl, dry_run=not APPLY)
 
-    stats = {"scanned": 0, "mms": 0, "repriced": 0, "unchanged": 0, "no_source": 0, "failed": 0}
+    stats = {"scanned": 0, "mms": 0, "repriced": 0, "unchanged": 0, "no_source": 0,
+             "excluded": 0, "override": 0, "failed": 0}
     page = 1
     while True:
         batch = None
@@ -64,16 +91,26 @@ def main():
             if not is_mms:
                 continue
             stats["mms"] += 1
-            orig = meta_get(p, META_ORIGINAL_PRICE)
-            try:
-                orig_v = float(orig)
-            except (TypeError, ValueError):
-                orig_v = 0
-            if not orig_v:
-                stats["no_source"] += 1
-                print(f"  ⚠ no source price, skipped: {sku}", flush=True)
+            # pulled from sale → don't touch its price while excluded
+            if _excluded(sku):
+                stats["excluded"] += 1
                 continue
-            new_price = int(math.ceil(orig_v * NEW_MULT))
+            # fixed-price override (OCR banner was wrong) wins over banner x mult
+            ov = PRICE_OVERRIDES.get(sku)
+            if ov is not None:
+                new_price = int(round(ov))
+                stats["override"] += 1
+            else:
+                orig = meta_get(p, META_ORIGINAL_PRICE)
+                try:
+                    orig_v = float(orig)
+                except (TypeError, ValueError):
+                    orig_v = 0
+                if not orig_v:
+                    stats["no_source"] += 1
+                    print(f"  ⚠ no source price, skipped: {sku}", flush=True)
+                    continue
+                new_price = int(math.ceil(orig_v * NEW_MULT))
             cur = p.get("regular_price")
             try:
                 cur_v = int(round(float(cur)))
