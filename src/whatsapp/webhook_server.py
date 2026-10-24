@@ -101,6 +101,13 @@ def create_app(orchestrator: WhatsAppOrchestrator) -> FastAPI:
     except Exception as exc:
         logger.warning(f"mail campaign tool not mounted: {exc}")
 
+    # Abandoned-payment recovery webhook (site POSTs → WhatsApp reminder).
+    try:
+        from src.whatsapp.recovery_tool import register_recovery_tool
+        register_recovery_tool(app, orchestrator)
+    except Exception as exc:
+        logger.warning(f"recovery tool not mounted: {exc}")
+
     @app.get("/webhook/whatsapp", response_class=PlainTextResponse)
     def verify(
         hub_mode: str = Query("", alias="hub.mode"),
@@ -189,6 +196,15 @@ def _dispatch(orchestrator: WhatsAppOrchestrator, msg: dict, owners: set[str]) -
                 logger.warning("Designer bot not attached; dropping customer message")
                 return
             if msg_type == "text":
+                # Abandoned-cart recovery: if this number was sent a recovery
+                # message, forward their reply to the owner (handles opt-out too)
+                # and do NOT run the designer bot on it.
+                try:
+                    from src.whatsapp.recovery_tool import handle_customer_reply
+                    if handle_customer_reply(orchestrator, from_number, text_body, msg_id):
+                        return
+                except Exception as exc:
+                    logger.warning(f"recovery reply handling failed: {exc}")
                 # WhatsApp marketing consent (Israeli spam law): honor opt-out /
                 # opt-in keywords before anything else.
                 try:

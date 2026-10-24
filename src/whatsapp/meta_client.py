@@ -97,6 +97,44 @@ class WhatsAppClient:
             return self.send_text(to, caption)
         return None
 
+    def send_template(
+        self,
+        to: str,
+        template_name: str,
+        lang_code: str = "he",
+        body_params: Optional[list] = None,
+    ) -> Optional[str]:
+        """Send an approved message template (required to open a conversation with
+        a user who has NOT messaged us in the last 24h — e.g. abandoned-cart
+        recovery). body_params fill {{1}}, {{2}}, … in the template body in order.
+        Returns the sent message_id on success, None on failure (error logged)."""
+        url = f"{self._base}/{self.phone_number_id}/messages"
+        template: dict = {"name": template_name, "language": {"code": lang_code}}
+        if body_params:
+            template["components"] = [{
+                "type": "body",
+                "parameters": [{"type": "text", "text": str(p)} for p in body_params],
+            }]
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to,
+            "type": "template",
+            "template": template,
+        }
+        try:
+            resp = self._client.post(url, json=payload)
+            if resp.status_code >= 300:
+                logger.error(f"send_template failed (to={to}, tpl={template_name}): "
+                             f"{resp.status_code} {resp.text[:300]}")
+                return None
+            messages = resp.json().get("messages", [])
+            if messages:
+                return messages[0].get("id")
+        except Exception as exc:
+            logger.error(f"send_template error (to={to}, tpl={template_name}): {exc}")
+        return None
+
     # ── Media download ───────────────────────────────────────────
 
     def get_media_url(self, media_id: str) -> Optional[str]:

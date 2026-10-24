@@ -1,0 +1,37 @@
+name: Recovery Queue Flush
+
+# Pings the bot's recovery flush endpoint every 20 minutes so quiet-hour / Shabbat
+# messages that were queued actually go out at 09:00 / motzei Shabbat. The ping
+# also wakes the free-tier Render instance (and keeps it warm), which is required
+# for the queue to be processed at all.
+#
+# Requires two repo secrets: SMADAR_REC_SECRET (the X-Smadar-Secret value) and,
+# optionally, BOT_BASE_URL (defaults to the known Render URL). If SMADAR_REC_SECRET
+# is not set the job no-ops with a notice.
+on:
+  schedule:
+    - cron: "*/20 * * * *"   # every 20 minutes
+  workflow_dispatch:
+
+concurrency:
+  group: recovery-flush
+  cancel-in-progress: true
+
+jobs:
+  flush:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Flush recovery queue
+        env:
+          SECRET: ${{ secrets.SMADAR_REC_SECRET }}
+          BASE: ${{ secrets.BOT_BASE_URL }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "SMADAR_REC_SECRET repo secret not set — skipping flush."
+            exit 0
+          fi
+          [ -z "$BASE" ] && BASE="https://smadar-whatsapp.onrender.com"
+          code=$(curl -s -o /dev/null -w "%{http_code}" -m 90 -X POST \
+            -H "X-Smadar-Secret: $SECRET" "$BASE/webhooks/smadar-recovery/flush")
+          echo "flush HTTP $code"

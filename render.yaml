@@ -40,5 +40,11 @@ services:
         sync: false
       - key: MAILCHIMP_API_KEY        # for the /mail promo-email builder
         sync: false
+      - key: SMADAR_REC_SECRET        # X-Smadar-Secret for the recovery webhook
+        sync: false
+      - key: SMADAR_REC_TEMPLATE      # approved Utility template NAME (cold sends)
+        sync: false
+      - key: SMADAR_REC_TEMPLATE_LANG # template language code (e.g. he)
+        value: "he"
       - key: VERIFY_SSL
         value: "false"
