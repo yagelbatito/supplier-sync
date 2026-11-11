@@ -7,7 +7,7 @@ name: ART Judaica Weekly Sync
 # images are hot-link protected). Runs in the cloud.
 on:
   schedule:
-    - cron: "0 4 * * 2"   # Tuesday 04:00 UTC — a different slot from Golyan
+    - cron: "0 2 */2 * *"   # every 2 days, 02:00 UTC (~3.5h run)
   workflow_dispatch:
     inputs:
       limit:

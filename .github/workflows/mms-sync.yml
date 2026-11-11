@@ -7,7 +7,7 @@ name: M.M.S Weekly Sync
 # meta only. Runs in the cloud.
 on:
   schedule:
-    - cron: "0 4 * * 1"   # Monday 04:00 UTC — its own slot
+    - cron: "0 1 */2 * *"   # every 2 days, 01:00 UTC
   workflow_dispatch:
     inputs:
       limit:

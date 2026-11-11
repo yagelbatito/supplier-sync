@@ -7,7 +7,7 @@ name: Golyan Weekly Sync
 # customer-facing text. Runs in the cloud so it doesn't depend on a laptop.
 on:
   schedule:
-    - cron: "0 3 * * 0"   # Sunday 03:00 UTC (~06:00 IL), after the main sync
+    - cron: "0 7 */2 * *"   # every 2 days, 07:00 UTC (after ART)
   workflow_dispatch:
     inputs:
       limit:

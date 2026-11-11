@@ -5,7 +5,7 @@ name: Muriel Art Sync
 # products that already exist by SKU), so it can be re-run until complete.
 on:
   schedule:
-    - cron: "0 4 * * 4"   # Thursday 04:00 UTC — its own weekly slot
+    - cron: "30 1 */2 * *"   # every 2 days, 01:30 UTC
   workflow_dispatch:
     inputs:
       limit:

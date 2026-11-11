@@ -7,7 +7,7 @@ name: Home Craft Stock Sync
 # storefront token is fetched fresh at runtime from the public site).
 on:
   schedule:
-    - cron: "0 5 * * 1"   # Monday 05:00 UTC
+    - cron: "45 1 */2 * *"   # every 2 days, 01:45 UTC
   workflow_dispatch:
 
 concurrency:
