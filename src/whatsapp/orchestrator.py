@@ -279,6 +279,8 @@ class WhatsAppOrchestrator:
         "📝 *הוספה לתיאור* — `הוסף תיאור <שם>, <טקסט>`\n"
         "🔄 *החלפת משפט בתיאור* — `החלף תיאור <שם>, <ישן>, <חדש>`\n"
         "📦 *סימון אזל* — `אזל <שם>`\n"
+        "🔢 *כמות במלאי* — `מלאי <שם> <מספר>`\n"
+        "🚫 *הגבלת כמות לרכישה* — `הגבל <שם> <מספר>`\n"
         "🗑️ *מחיקה* — `מחק <שם>`\n"
         "♻️ *ניקוי מטמון* — `נקה מטמון <שם>`\n"
         "✉️ *מייל דיוור/מבצע* — `דיוור`\n"
@@ -539,6 +541,16 @@ class WhatsAppOrchestrator:
         if m:
             self._cmd_set_price(from_number, m.group(1).strip(), m.group(2), message_id)
             return
+        # management: stock quantity — "מלאי <שם> <מספר>" (0 → אזל אוטומטית)
+        m = re.match(r"^(?:עדכן\s+מלאי|כמות\s+במלאי|מלאי)\s+(.+?)\s+(\d+)\s*(?:יחידות|יח['׳])?$", text)
+        if m:
+            self._cmd_set_stock_qty(from_number, m.group(1).strip(), m.group(2), message_id)
+            return
+        # management: max quantity per order — "הגבל <שם> <מספר>"
+        m = re.match(r"^(?:הגבלת\s+כמות|הגבל\s+כמות|הגבלה|הגבל|מקסימום)\s+(.+?)\s+(?:ל[-\s]?)?(\d+)\s*(?:יחידות|יח['׳])?$", text)
+        if m:
+            self._cmd_limit_qty(from_number, m.group(1).strip(), m.group(2), message_id)
+            return
         # otherwise: product lookup query — strip a leading question word
         q = text
         for kw in ("כמה עולה", "מה המחיר של", "מה המחיר", "חפש", "מחיר", "בדוק"):
@@ -653,6 +665,73 @@ class WhatsAppOrchestrator:
         except Exception as exc:
             logger.error(f"[WA] price update failed: {exc}")
             self.wa.send_text(from_number, "⚠️ עדכון המחיר נכשל. נסה שוב.", reply_to_msg_id=message_id)
+
+    def _cmd_set_stock_qty(self, from_number: str, name: str, qty_str: str, message_id: str) -> None:
+        """`מלאי <שם> <מספר>` — set the tracked stock quantity. 0 → auto out-of-stock."""
+        try:
+            qty = int(qty_str)
+        except ValueError:
+            self.wa.send_text(from_number, "כמות לא תקינה.", reply_to_msg_id=message_id)
+            return
+        p = self._resolve_one(from_number, name, message_id, "לעדכן מלאי")
+        if not p:
+            return
+        try:
+            self.wc_client.put(f"products/{p['id']}", {
+                "manage_stock": True,
+                "stock_quantity": qty,
+                "stock_status": "instock" if qty > 0 else "outofstock",
+            })
+        except Exception as exc:
+            logger.error(f"[WA] stock qty failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון המלאי נכשל. נסה שוב.", reply_to_msg_id=message_id)
+            return
+        if qty > 0:
+            self.wa.send_text(
+                from_number,
+                f'📦 "{p.get("name","")}" → *{qty}* יחידות במלאי ✅\n'
+                f'המוצר יֵאזל אוטומטית כשהכמות תגיע ל-0.',
+                reply_to_msg_id=message_id)
+        else:
+            self.wa.send_text(
+                from_number,
+                f'📦 "{p.get("name","")}" → 0 במלאי, סומן *אזל מהמלאי* ✅',
+                reply_to_msg_id=message_id)
+
+    def _cmd_limit_qty(self, from_number: str, name: str, max_str: str, message_id: str) -> None:
+        """`הגבל <שם> <מספר>` — cap the quantity a customer can buy per order."""
+        try:
+            mx = int(max_str)
+        except ValueError:
+            self.wa.send_text(from_number, "מספר לא תקין.", reply_to_msg_id=message_id)
+            return
+        p = self._resolve_one(from_number, name, message_id, "להגביל כמות")
+        if not p:
+            return
+        if mx <= 1:
+            payload = {"sold_individually": True}   # native: exactly 1 per order
+        else:
+            # The WooCommerce "Min/Max Quantities" plugin reads this meta key.
+            payload = {"sold_individually": False,
+                       "meta_data": [{"key": "maximum_allowed_quantity", "value": str(mx)}]}
+        try:
+            self.wc_client.put(f"products/{p['id']}", payload)
+        except Exception as exc:
+            logger.error(f"[WA] limit qty failed: {exc}")
+            self.wa.send_text(from_number, "⚠️ עדכון ההגבלה נכשל. נסה שוב.", reply_to_msg_id=message_id)
+            return
+        if mx <= 1:
+            self.wa.send_text(
+                from_number,
+                f'🔢 "{p.get("name","")}" → לקוח יכול לקנות *יחידה אחת בלבד* להזמנה ✅',
+                reply_to_msg_id=message_id)
+        else:
+            self.wa.send_text(
+                from_number,
+                f'🔢 "{p.get("name","")}" → מקסימום *{mx}* יחידות להזמנה ✅\n'
+                f'⚠️ הגבלה מעל 1 מחייבת שתוסף "Min/Max Quantities" מותקן באתר. '
+                f'אם הוא לא מותקן — ההגבלה לא תיאכף; תגיד לי ואפשר להגביל ליחידה אחת (עובד תמיד).',
+                reply_to_msg_id=message_id)
 
     _SHIP = {"קטן": "משלוח-קטן", "בינוני": "משלוח-בינוני", "גדול": "משלוח-גדול"}
 
