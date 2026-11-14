@@ -125,6 +125,18 @@ def fetch_all(share_url: str, ai_client, ocr_model: str = "gpt-4o-mini", max_ite
             if not sku or not pname:
                 logger.warning(f"M.M.S: skip (no sku/name): {name}")
                 continue
+            # Remove the supplier's clearance badge (top-right circle) before
+            # cropping the bottom banner, so future imports come in clean.
+            try:
+                import cv2
+                import numpy as _np
+                from src.suppliers import mms_image_clean as _mic
+                _arr = cv2.cvtColor(_np.array(im), cv2.COLOR_RGB2BGR)
+                _c = _mic.detect_circle(_arr)
+                if _c:
+                    im = Image.fromarray(cv2.cvtColor(_mic.remove_circle(_arr, _c), cv2.COLOR_BGR2RGB))
+            except Exception as _e:
+                logger.warning(f"M.M.S circle clean failed on {name}: {_e}")
             clean = crop_banner(im)
             # Downscale — the source images are huge (up to ~4500px); a >1600px
             # upload makes WP media time out (502) and bloats the site. Product
