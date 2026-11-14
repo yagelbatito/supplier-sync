@@ -139,8 +139,9 @@ class WhatsAppOrchestrator:
                 from_number,
                 "📷 קיבלתי את התמונה!\n"
                 "עכשיו שלח את הפרטים (אפשר בהודעה נפרדת):\n"
-                "שם:<שם המוצר>  מחיר:<מחיר>  קטגוריה:<קטגוריה>\n\n"
-                "לדוגמה: שם:שולחן אלון נפתח  מחיר:4900  קטגוריה:פינות אוכל מעץ",
+                "שם:<שם המוצר>  מחיר:<מחיר>  קטגוריה:<קטגוריה>\n"
+                "אפשר להוסיף גם: ספק:<שם ספק>  מלאי:<כמות>\n\n"
+                "לדוגמה: שם:שולחן אלון נפתח  מחיר:4900  קטגוריה:פינות אוכל מעץ  ספק:רוני  מלאי:5",
                 reply_to_msg_id=message_id,
             )
             return
@@ -171,7 +172,7 @@ class WhatsAppOrchestrator:
             f"✅ זוהה:\n{summary}\n\n"
             f"השב להודעה זו עם:\n"
             f"שם:{ocr_result.name or '<שם המוצר>'} מידות:<מידות> מחיר:150 קטגוריה:<קטגוריה>\n\n"
-            f"(חסר: {missing}. אפשר להוסיף גם: מקט:XXX, ספק:perlahome)",
+            f"(חסר: {missing}. אפשר להוסיף גם: מקט:XXX, ספק:<שם ספק>, מלאי:5)",
             reply_to_msg_id=message_id,
         )
 
@@ -882,9 +883,15 @@ class WhatsAppOrchestrator:
         """
         reply_target = reply_to_msg_id or pending_msg_id
 
-        # 1. Resolve supplier config
+        # 1. Resolve supplier config. A known key picks its config; a FREE-TEXT
+        # supplier name (not a configured key) still works — we use the default
+        # WhatsApp config but store that name as the product's supplier.
         supplier_key = cmd.supplier or "whatsapp"
         config = self._get_supplier_config(supplier_key)
+        supplier_name_override = None
+        if not config:
+            supplier_name_override = (cmd.supplier_raw or cmd.supplier)
+            config = self._get_supplier_config("whatsapp")
         if not config:
             self.wa.send_text(
                 from_number,
@@ -896,6 +903,8 @@ class WhatsAppOrchestrator:
 
         # 2. Build the SupplierProduct
         product = self._build_product(ocr, cmd, config, pending_msg_id)
+        if supplier_name_override:
+            product.supplier_name = supplier_name_override
 
         # 3. ── Category matching ──────────────────────────────
         # If the user explicitly typed a category, honour it — mapped to the
@@ -1005,6 +1014,20 @@ class WhatsAppOrchestrator:
             self.store.mark_status(pending_msg_id, "error", {"error": str(exc)})
             return
 
+        # 8b. Optional stock quantity from the upload command ("מלאי 5")
+        stock_note = ""
+        if cmd.stock is not None and wc_id:
+            try:
+                self.wc_client.put(f"products/{wc_id}", {
+                    "manage_stock": True,
+                    "stock_quantity": cmd.stock,
+                    "stock_status": "instock" if cmd.stock > 0 else "outofstock",
+                })
+                stock_note = f"\nמלאי: {cmd.stock} יחידות"
+            except Exception as exc:
+                logger.error(f"[WA] set stock on upload failed: {exc}")
+                stock_note = "\n⚠️ קביעת המלאי נכשלה"
+
         # 9. Confirm back in WhatsApp
         emoji = "✅" if action == "created" else "🔄"
         review_note = ""
@@ -1018,7 +1041,9 @@ class WhatsAppOrchestrator:
             f"מק\"ט: {product.sku}\n"
             f"שם: {product.display_name() if hasattr(product, 'display_name') else product.name}\n"
             f"מחיר: {product.calculated_price:.2f} ₪\n"
+            f"ספק: {product.supplier_name}\n"
             f"קטגוריה: {product.mapped_category}"
+            f"{stock_note}"
             f"{review_note}",
             reply_to_msg_id=reply_target,
         )

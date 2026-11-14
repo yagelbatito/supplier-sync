@@ -53,6 +53,9 @@ _KEY_ALIASES = {
     "מידה": "dimensions",
     "dimensions": "dimensions",
     "size": "dimensions",
+    # stock quantity — "מלאי:5" / "מלאי 5"
+    "מלאי": "stock",
+    "stock": "stock",
     # special commands
     "ביטול": "cancel",
     "מחק": "cancel",
@@ -64,6 +67,8 @@ _KEY_ALIASES = {
 class ParsedCommand:
     """Result of parsing a text message reply."""
     supplier: Optional[str] = None
+    supplier_raw: Optional[str] = None   # original-case supplier text (for display name)
+    stock: Optional[int] = None          # stock quantity to set on the new product
     price: Optional[float] = None
     sku_override: Optional[str] = None
     name_override: Optional[str] = None
@@ -144,8 +149,14 @@ def parse_command(text: str) -> ParsedCommand:
             result.is_cancel = True
             continue
         if canonical == "supplier":
-            # Normalize to lowercase, strip quotes/punctuation that users add.
-            result.supplier = raw_value.lower().strip(" \"'.,;")
+            # Normalize to lowercase for config-key matching, but keep the
+            # original text so a free-text supplier NAME can be stored as-is.
+            result.supplier_raw = raw_value.strip(" \"'.,;")
+            result.supplier = result.supplier_raw.lower()
+        elif canonical == "stock":
+            num = _parse_number(raw_value)
+            if num is not None:
+                result.stock = int(num)
         elif canonical == "price":
             num = _parse_number(raw_value)
             if num is not None:
