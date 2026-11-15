@@ -5,9 +5,13 @@ lxml>=4.9.0
 selenium>=4.18.0
 webdriver-manager>=4.0.0
 
-# Image processing (M.M.S: banner OCR crop)
+# Image processing (M.M.S: banner crop + clearance-circle removal).
+# opencv-python-headless (no GUI libs) is required so the import path can strip
+# the "חיסול מלאי" badge in GitHub Actions too — without it, `import cv2` fails
+# there, the circle-removal is silently skipped, and dirty images get re-uploaded.
 Pillow>=10.0.0
 numpy>=1.24.0
+opencv-python-headless>=4.8.0
 
 # WooCommerce
 woocommerce>=3.0.0
